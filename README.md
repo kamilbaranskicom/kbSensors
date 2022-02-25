@@ -5,3 +5,9 @@
 ## INSTALLATION:
 - Use [this tool](https://github.com/earlephilhower/arduino-esp8266littlefs-plugin) for Arduino IDE to flash static files onto the ESP (or try `REMOTE_HELPER_SERVER` instead)
 - copy `wifiConfig_sample.h` to `wifiConfig.h` and enter your ssid/password there.
+
+## CRAZY SCREENSHOTS:
+<img src="screenshots/kbSensors www.png">
+<img src="screenshots/kbSensors xml.png">
+<img src="screenshots/kbSensors munin.png">
+<img src="screenshots/kbSensors homeassistant.png">
