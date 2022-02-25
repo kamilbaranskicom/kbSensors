@@ -1,49 +1,90 @@
-const char PROGRAMNAME[] = "KB Sensors station.";
+const char programName[] =
+  "KB Sensors station.";
 
-const char PROGRAMVERSION[] = "0.20220225";
+const char programVersion[] =
+  "0.20220225";
 
-const char PROGRAMMANUAL[] =
+const char programManual[] =
   "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"
   "// outputs data at http://kbsensors/ , http://kbsensors/xml , http://kbsensors/txt\n"
   "// https is not available for now.";
 
 
-#define REMOTEHELPERSERVER "http://192.168.50.3/kbSensors/"
 
-
-#include "DHTStable.h"
-#define DHT11_PIN 4 // D2
-DHTStable DHT;
-
+// copy wifiConfig_sample.h to wifiConfig.h and enter your ssid/password there
 #include "wifiConfig.h"
-// TODO: config using www?? naah.
+// (TODO: config using www?? naah.)
 
+
+/* uncomment the following line to use REMOTE_HELPER_SERVER instead of local files for:
+  kbSensors.js, kbSensors.css and kbSensors.svg
+*/
+// #define REMOTE_HELPER_SERVER "http://192.168.50.3/kbSensors/"
+
+// comment the following line to disable OTA updates
+#define OTA_ENABLED
+
+/*
+   WWW server
+*/
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 #include <uri/UriRegex.h>
 
-// friendly "kbsensors" name
+/*
+   filesystem
+*/
+#include <LittleFS.h>
+const char* fsName = "LittleFS";
+FS* fileSystem = &LittleFS;
+LittleFSConfig fileSystemConfig = LittleFSConfig();
+static bool fsOK;
+
+/*
+   friendly "kbsensors" name
+*/
 #define NETBIOSNAME "kbsensors"
 #include <ESP8266NetBIOS.h>
 
-// to update over the air
+/*
+   updates over the air
+*/
+#ifdef OTA_ENABLED
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#endif
+
+
+/*************************************
+   SENSORS:
+*/
 
 // the sensors are slow; you can read them not more often than 1s.
 const unsigned int updateInterval = 1000;
 unsigned long previousMillis = 0;
 
+/*
+   DHT11
+*/
+#include "DHTStable.h"
+#define DHT11_PIN 4 // connect DHT11 to the D2 pin on NodeMCU v3 (don't forget about the resistor)
+DHTStable DHT;
+
+/*
+   DS18B20
+*/
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#define DS18B20_PIN 5 // D1
-
+#define DS18B20_PIN 5 // Connect DS18B20 to D1 pin on NodeMCU v3 (don't forget about the resistor)
 OneWire oneWire(DS18B20_PIN);
-DallasTemperature sensors(&oneWire);  // Przekazania informacji do biblioteki
+DallasTemperature sensors(&oneWire);
 DeviceAddress Thermometer;
 
+/*
+   tables: results
+*/
 // we write these tables when reading sensors
 // and read these tables when sending results to user
 uint8_t sensorResultCount = 0;
@@ -58,6 +99,9 @@ String valueType[MAXRESULTSCOUNT];
 const String TYPE_PERCENT = "%";
 const String TYPE_CDEGREE = "°C";
 
+/*
+   tables: sensorsDB
+*/
 // this is the sensors database, it is (will be) stored on the device (in EEPROM). Compensation and friendly names.
 String sensorsDBAddresses[MAXRESULTSCOUNT];
 String sensorsDBFriendlyNames[MAXRESULTSCOUNT];
@@ -67,8 +111,17 @@ uint8_t sensorsDBCount = 0;
 void setup() {
   // put your setup code here, to run once:
   initSerial();
+
+#ifndef REMOTE_HELPER_SERVER
+  initFileSystem();
+#endif
+
   initWiFi();
+
+#ifdef OTA_ENABLED
   initOTA();
+#endif
+
   initNetbiosName();
   initWebserver();
   loadSensorsDB();
@@ -80,6 +133,14 @@ void initSerial() {
   Serial.setTimeout(50);
   showAbout();
   Serial.println("Serial initialized!");
+}
+
+void showAbout() {
+  Serial.println("\n\n");
+  Serial.println(programName);
+  Serial.println(programVersion);
+  Serial.println(programManual);
+  Serial.println("\n\n");
 }
 
 void initNetbiosName() {
@@ -142,13 +203,6 @@ void saveSensorsDB() {
   // TODO
 }
 
-void showAbout() {
-  Serial.println("\n\n");
-  Serial.println(PROGRAMNAME);
-  Serial.println(PROGRAMVERSION);
-  Serial.println(PROGRAMMANUAL);
-}
-
 void initWiFi() {
   Serial.print("Connecting to ");
   Serial.print(ssid);
@@ -196,15 +250,64 @@ void loop() {
   // put your main code here, to run repeatedly:
   // updateSensorsValues();
   server.handleClient();
+
+#ifdef OTA_ENABLED
   ArduinoOTA.handle();
+#endif
 }
 
+#ifdef REMOTE_HELPER_SERVER
+// use css, js and svg files from remote server on REMOTE_HELPER_SERVER (eg. http://192.168.50.3/kbSensors/),
+
 void handleFileDownload(String file) {
-  // TODO: currently we use css and js file from remote server on REMOTEHELPERSERVER (http://192.168.50.3/kbSensors/),
-  // but we should move these files locally someday.
-  server.sendHeader("Location", String(REMOTEHELPERSERVER) + file, true);
+  server.sendHeader("Location", String(REMOTE_HELPER_SERVER) + file, true);
   server.send(302, "text/plain", "");
 }
+
+#else
+// use local css, js and svg files
+
+void initFileSystem() {
+  fileSystemConfig.setAutoFormat(false);
+  fileSystem->setConfig(fileSystemConfig);
+  fsOK = fileSystem->begin();
+  Serial.println(fsOK ? F("Filesystem initialized.") : F("Filesystem init failed!"));
+}
+
+bool handleFileDownload(String path) {
+  Serial.println(String("handleFileDownload: ") + path);
+  if (!fsOK) {
+    // replyServerError(FPSTR(FS_INIT_ERROR));
+    return true;
+  }
+
+  if (path.endsWith("/")) {
+    path += "index.htm";
+  }
+
+  String contentType;
+  if (server.hasArg("download")) {
+    contentType = F("application/octet-stream");
+  } else {
+    contentType = mime::getContentType(path);
+  }
+
+  if (!fileSystem->exists(path)) {
+    // File not found, try gzip version
+    path = path + ".gz";
+  }
+  if (fileSystem->exists(path)) {
+    File file = fileSystem->open(path, "r");
+    if (server.streamFile(file, contentType) != file.size()) {
+      Serial.println("Sent less data than expected!");
+    }
+    file.close();
+    return true;
+  }
+
+  return false;
+}
+#endif
 
 void handleClientAskingAboutSensors(String desiredFormat) {
   updateSensorsValues();
@@ -283,13 +386,13 @@ String sendHTML() {
   ptr += "<head>\n";
   ptr += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
   ptr += "  <meta charset=\"UTF-8\">\n";
-  ptr += "  <title>" + (String)PROGRAMNAME + "</title>\n";
+  ptr += "  <title>" + (String)programName + "</title>\n";
   ptr += "  <link rel=\"stylesheet\" href=\"/kbSensors.css\">\n";
   ptr += "  <script src=\"/kbSensors.js\" defer></script>\n";
   ptr += "  <link rel=\"icon\" href=\"/kbSensors.svg\" type=\"image/svg+xml\">\n";
   ptr += "</head>\n";
   ptr += "<body><form><div id=\"webpage\">\n";
-  ptr += "<h1>" + (String)PROGRAMNAME + "</h1>\n";
+  ptr += "<h1>" + (String)programName + "</h1>\n";
 
   if (sensorResultCount > 0) {
     ptr += "<table>\n";
@@ -347,6 +450,27 @@ void updateSensorsValues() {
   }
 }
 
+boolean addSensor(String address, float value, String sensorType) {
+  if ((sensorResultCount > MAXRESULTSCOUNT) || isnan(value)) {
+    return false;
+  }
+
+  values[sensorResultCount] = value;
+  valueType[sensorResultCount] = sensorType;
+  sensorAddresses[sensorResultCount] = address;
+
+  // find sensor address in database
+  uint8_t sensorIndexInDB = getSensorsDBIndex(address);
+  if (sensorIndexInDB != 255) {
+    friendlyNames[sensorResultCount] = sensorsDBFriendlyNames[sensorIndexInDB];
+    compensation[sensorResultCount] = sensorsDBCompensation[sensorIndexInDB];
+  } else {
+    friendlyNames[sensorResultCount] = address;
+  }
+  sensorResultCount++;
+  return true;
+}
+
 void emptyRestOfTheArray() {
   for (uint8_t sensorIndexInResults = sensorResultCount; sensorIndexInResults < MAXRESULTSCOUNT; sensorIndexInResults++) {
     sensorAddresses[sensorIndexInResults] = "";
@@ -378,27 +502,6 @@ void updateDHTValues() {
       Serial.println("Failed to read humidity from DHT sensor!");
     }
   }
-}
-
-boolean addSensor(String address, float value, String sensorType) {
-  if ((sensorResultCount > MAXRESULTSCOUNT) || isnan(value)) {
-    return false;
-  }
-
-  values[sensorResultCount] = value;
-  valueType[sensorResultCount] = sensorType;
-  sensorAddresses[sensorResultCount] = address;
-
-  // find sensor address in database
-  uint8_t sensorIndexInDB = getSensorsDBIndex(address);
-  if (sensorIndexInDB != 255) {
-    friendlyNames[sensorResultCount] = sensorsDBFriendlyNames[sensorIndexInDB];
-    compensation[sensorResultCount] = sensorsDBCompensation[sensorIndexInDB];
-  } else {
-    friendlyNames[sensorResultCount] = address;
-  }
-  sensorResultCount++;
-  return true;
 }
 
 void updateDS18B20Values() {
