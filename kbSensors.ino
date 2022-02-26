@@ -381,6 +381,9 @@ boolean editSensor(String sensorAddress, String sensorNewFriendlyName, float sen
 }
 
 String sendHTML() {
+  String valueString;
+  float value;
+  
   String ptr = "<!DOCTYPE html>\n";
   ptr += "<html>\n";
   ptr += "<head>\n";
@@ -399,7 +402,13 @@ String sendHTML() {
     for (uint8_t deviceNumber = 0; deviceNumber < sensorResultCount; deviceNumber++) {
       ptr += "<tr>\n";
       ptr += "  <td title=" + (String)sensorAddresses[deviceNumber] + ">" + (String)friendlyNames[deviceNumber] + "\n";
-      ptr += "  <td title=\"" + (String)compensation[deviceNumber] + "\">" + (String)(values[deviceNumber] + compensation[deviceNumber]) + valueType[deviceNumber] + "\n";
+      value = values[deviceNumber] + compensation[deviceNumber];
+      if (value < 0) {
+        valueString = (String)"&minus;" + (String)(-value);
+      } else {
+        valueString = (String)value;
+      }
+      ptr += "  <td title=\"" + (String)compensation[deviceNumber] + "\">" + valueString + valueType[deviceNumber] + "\n";
       ptr += "</tr>\n";
     }
     ptr += "</table>\n";
