@@ -96,8 +96,8 @@ float compensation[MAXRESULTSCOUNT];
 String valueType[MAXRESULTSCOUNT];
 
 // for valueType[]
-const String TYPE_PERCENT = "%";
-const String TYPE_CDEGREE = "°C";
+const String TYPE_PERCENT = "%"; // correct notation for Polish language (no space before percent sign)
+const String TYPE_CDEGREE = " °C";  // correct notation for Polish language (space, degree sign, C)
 
 /*
    tables: sensorsDB
