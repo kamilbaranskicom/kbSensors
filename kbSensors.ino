@@ -7,7 +7,7 @@ const char programVersion[] =
 const char programManual[] =
   "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"
   "// outputs data at http://kbsensors/ , http://kbsensors/xml , http://kbsensors/txt\n"
-  "// https is not available for now.";
+  "// https is not available for now. Optional ?refresh=[seconds] for html output.";
 
 
 
@@ -328,10 +328,17 @@ void handleClientAskingAboutSensors(String desiredFormat) {
   } else if (desiredFormat == "xml") {
     server.send(200, "text/xml", sendXML());
   } else {
-    server.send(200, "text/html", sendHTML());
-  }
-  if (updated) {
-    blink();
+    uint16_t refresh = 0;
+    for (uint8_t i = 0; i < server.args(); i++) {
+      if (server.argName(i) == "refresh") {
+        // TODO: validate input
+        refresh = atoi(server.arg(i).c_str());
+      }
+    }
+    server.send(200, "text/html", sendHTML(refresh));
+    if (updated) {
+      blink();
+    }
   }
 }
 
@@ -396,19 +403,26 @@ boolean editSensor(String sensorAddress, String sensorNewFriendlyName, float sen
   return true;
 }
 
-String sendHTML() {
+String sendHTML(uint16_t refresh) {
   String valueString;
   float value;
 
   String ptr = "<!DOCTYPE html>\n";
   ptr += "<html>\n";
   ptr += "<head>\n";
-  ptr += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n";
+  ptr += "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n";
   ptr += "  <meta charset=\"UTF-8\">\n";
   ptr += "  <title>" + (String)programName + "</title>\n";
   ptr += "  <link rel=\"stylesheet\" href=\"/kbSensors.css\">\n";
   ptr += "  <script src=\"/kbSensors.js\" defer></script>\n";
   ptr += "  <link rel=\"icon\" href=\"/kbSensors.svg\" type=\"image/svg+xml\">\n";
+  ptr += "  <meta name=\"generator\" content=\"" + (String)programName + " " + (String)programVersion + "\">\n";
+  ptr += "  <meta name=\"description\" content=\"" + (String)programManual + "\">\n";
+
+  if (refresh > 0) {
+    ptr += "  <meta http-equiv=\"refresh\" content=\"" + (String)refresh + "\">\n";
+  }
+
   ptr += "</head>\n";
   ptr += "<body><form><div id=\"webpage\">\n";
   ptr += "<h1>" + (String)programName + "</h1>\n";
