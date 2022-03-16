@@ -2,7 +2,7 @@ const char programName[] =
   "KB Sensors station.";
 
 const char programVersion[] =
-  "0.20220225";
+  "0.20220316";
 
 const char programManual[] =
   "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"
@@ -108,6 +108,12 @@ String sensorsDBFriendlyNames[MAXRESULTSCOUNT];
 float sensorsDBCompensation[MAXRESULTSCOUNT];
 uint8_t sensorsDBCount = 0;
 
+/*
+   LED for blinking
+*/
+uint16_t blinkDelay = 100;  // 0.1 s
+const uint8_t ledPin = LED_BUILTIN;
+
 void setup() {
   // put your setup code here, to run once:
   initSerial();
@@ -126,6 +132,12 @@ void setup() {
   initWebserver();
   loadSensorsDB();
   sensors.begin(); // ds18b20 init
+  initLED();
+}
+
+void initLED() {
+  pinMode(ledPin, OUTPUT);
+  blink(2);
 }
 
 void initSerial() {
@@ -310,7 +322,7 @@ bool handleFileDownload(String path) {
 #endif
 
 void handleClientAskingAboutSensors(String desiredFormat) {
-  updateSensorsValues();
+  bool updated = updateSensorsValues();
   if ((desiredFormat == "txt") || (desiredFormat == "text")) {
     server.send(200, "text/plain", sendTXT());
   } else if (desiredFormat == "xml") {
@@ -318,11 +330,15 @@ void handleClientAskingAboutSensors(String desiredFormat) {
   } else {
     server.send(200, "text/html", sendHTML());
   }
+  if (updated) {
+    blink();
+  }
 }
 
 void handleReboot() {
   Serial.println("Reboot request!");
   server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"10;url=/\"></head><body>Reboot in progress...</body></html>"));
+  blink(3);
   delay(2000); // 2s to allow user to download the page
   ESP.restart();
 }
@@ -383,7 +399,7 @@ boolean editSensor(String sensorAddress, String sensorNewFriendlyName, float sen
 String sendHTML() {
   String valueString;
   float value;
-  
+
   String ptr = "<!DOCTYPE html>\n";
   ptr += "<html>\n";
   ptr += "<head>\n";
@@ -445,18 +461,29 @@ String sendTXT() {
   return ptr;
 }
 
-void updateSensorsValues() {
+bool updateSensorsValues() {
   unsigned long currentMillis = millis();
 
-  if (currentMillis - previousMillis >= updateInterval) {
-    previousMillis = currentMillis;
-
-    // we can reset the ResultCount.
-    sensorResultCount = 0;
-    updateDHTValues();
-    updateDS18B20Values();
-    emptyRestOfTheArray();
+  if (currentMillis < previousMillis) {
+    // millis() returns the number of milliseconds passed since the Arduino board began running the current program.
+    // This number will overflow (go back to zero), after approximately 50 days.
+    // This just happened.
+    previousMillis = -updateInterval;
   }
+
+  if (currentMillis - previousMillis < updateInterval) {
+    // too early from previous update
+    return false;
+  }
+
+  previousMillis = currentMillis;
+
+  // we can reset the ResultCount.
+  sensorResultCount = 0;
+  updateDHTValues();
+  updateDS18B20Values();
+  emptyRestOfTheArray();
+  return true;
 }
 
 boolean addSensor(String address, float value, String sensorType) {
@@ -555,4 +582,20 @@ String formatAddressAsHex(DeviceAddress deviceAddress) {
     address += hexChars[oneByte & 0x0F];
   }
   return address;
+}
+
+void blink() {
+  blink(1);
+}
+
+void blink(uint8_t howManyTimes) {
+  while (howManyTimes > 0) {
+    digitalWrite(ledPin, HIGH);
+    delay(blinkDelay);
+    digitalWrite(ledPin, LOW);
+    howManyTimes--;
+    if (howManyTimes > 0) {
+      delay(blinkDelay);
+    }
+  }
 }
