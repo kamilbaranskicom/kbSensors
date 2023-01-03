@@ -2,7 +2,7 @@ const char programName[] =
   "KB Sensors station.";
 
 const char programVersion[] =
-  "0.20220316";
+  "0.20230103";
 
 const char programManual[] =
   "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"

@@ -8,26 +8,48 @@ body {
   margin-top: 50px;
 }
 h1 {
-  color: #444444;
   margin: 50px auto 30px;
 }
 p {
   font-size: 24px;
-  color: #444444;
   margin-bottom: 10px;
 }
 table {
   margin: 40px auto;
 }
 td {
-  background: #e0e0e0;
   margin: 2px;
   padding: 7px 20px;
   cursor:pointer;
 }
-tr:HOVER td {
-  background: #eaeaea;
-}
 input {
   margin: 0px 3px;
+}
+@media (prefers-color-scheme: light) {
+  body {
+    color: #444444;
+  }
+  td {
+    background: #e0e0e0;
+  } 
+  tr:HOVER td {
+    background: #eaeaea;
+  } 
+  body {
+    background: #f6f6f6;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #bbbbbb;
+  }
+  td {
+    background: #1c1c1c;
+  } 
+  tr:HOVER td {
+    background: #151515;
+  } 
+  body {
+    background: #090909;
+  }
 }
