@@ -208,6 +208,10 @@ void loadSensorsDB() {
   sensorsDBFriendlyNames[3] = "Temperatura DHT";
   sensorsDBCompensation[3] = 0;
 
+  sensorsDBAddresses[4] = "28A1C70175230BE7";
+  sensorsDBFriendlyNames[4] = "na dworze";
+  sensorsDBCompensation[4] = 0;
+
   sensorsDBCount = 4;
 }
 
