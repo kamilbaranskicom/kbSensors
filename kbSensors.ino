@@ -212,7 +212,7 @@ void loadSensorsDB() {
   sensorsDBFriendlyNames[4] = "na dworze";
   sensorsDBCompensation[4] = 0;
 
-  sensorsDBCount = 4;
+  sensorsDBCount = 5;
 }
 
 void saveSensorsDB() {
