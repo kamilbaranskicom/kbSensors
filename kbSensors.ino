@@ -249,6 +249,7 @@ void initWebserver() {
   // special pages
   server.on("/edit", handleEdit);
   server.on("/reboot", handleReboot);
+  server.on("/reset", handleReset);   // reset only resets sensors.
 
   server.onNotFound([]() {
     server.send(404, "text/plain", "Not found");
@@ -348,6 +349,13 @@ void handleReboot() {
   blink(3);
   delay(2000); // 2s to allow user to download the page
   ESP.restart();
+}
+
+void handleReset() {
+    Serial.println("Reset request!");
+    server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
+    sensors.begin(); // ds18b20 init
+    blink(4);
 }
 
 void handleEdit() {
