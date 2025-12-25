@@ -20,10 +20,25 @@ table {
 td {
   margin: 2px;
   padding: 7px 20px;
-  cursor:pointer;
+  cursor: pointer;
 }
 input {
   margin: 0px 3px;
+}
+nav {
+  font-size: 80%;
+  text-align: right;
+}
+nav a {
+  color: inherit;
+  text-decoration: none;
+}
+.cursor-wait,
+.cursor-wait * {
+  cursor: wait !important;
+}
+#navtr {
+  background: transparent !important;
 }
 @media (prefers-color-scheme: light) {
   body {
@@ -31,10 +46,10 @@ input {
   }
   td {
     background: #e0e0e0;
-  } 
-  tr:HOVER td {
+  }
+  tr:hover td {
     background: #eaeaea;
-  } 
+  }
   body {
     background: #f6f6f6;
   }
@@ -45,10 +60,10 @@ input {
   }
   td {
     background: #1c1c1c;
-  } 
-  tr:HOVER td {
+  }
+  tr:hover td {
     background: #151515;
-  } 
+  }
   body {
     background: #090909;
   }

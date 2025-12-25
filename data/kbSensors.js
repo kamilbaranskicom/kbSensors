@@ -26,7 +26,9 @@ function editSensor(tr) {
   temperature = td2.innerText;
 
   td1.innerHTML =
-    'name: <input name="friendlyName" type="text" value="' + friendlyName + '" />';
+    'name: <input name="friendlyName" type="text" value="' +
+    friendlyName +
+    '" />';
   td2.innerHTML =
     'compensation: <input name="compensation" type="number" size=6 value="' +
     compensation +
@@ -81,4 +83,11 @@ function sendNewSensorData() {
       window.location.reload(true);
     });
   closeEditTr();
+}
+
+function refreshPage(e) {
+  e.preventDefault();
+  document.documentElement.classList.add("cursor-wait");
+  document.body.style.opacity = "50%";
+  window.location.reload();
 }

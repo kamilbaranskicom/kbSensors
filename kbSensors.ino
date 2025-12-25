@@ -69,7 +69,7 @@ unsigned long previousMillis = 0;
    DHT11
 */
 #include "DHTStable.h"
-#define DHT11_PIN 4 // connect DHT11 to the D2 pin on NodeMCU v3 (don't forget about the resistor)
+#define DHT11_PIN 4  // connect DHT11 to the D2 pin on NodeMCU v3 (don't forget about the resistor)
 DHTStable DHT;
 
 /*
@@ -77,7 +77,7 @@ DHTStable DHT;
 */
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#define DS18B20_PIN 5 // Connect DS18B20 to D1 pin on NodeMCU v3 (don't forget about the resistor)
+#define DS18B20_PIN 5  // Connect DS18B20 to D1 pin on NodeMCU v3 (don't forget about the resistor)
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
 DeviceAddress Thermometer;
@@ -96,7 +96,7 @@ float compensation[MAXRESULTSCOUNT];
 String valueType[MAXRESULTSCOUNT];
 
 // for valueType[]
-const String TYPE_PERCENT = "%"; // correct notation for Polish language (no space before percent sign)
+const String TYPE_PERCENT = "%";    // correct notation for Polish language (no space before percent sign)
 const String TYPE_CDEGREE = " °C";  // correct notation for Polish language (space, degree sign, C)
 
 /*
@@ -131,7 +131,7 @@ void setup() {
   initNetbiosName();
   initWebserver();
   loadSensorsDB();
-  sensors.begin(); // ds18b20 init
+  sensors.begin();  // ds18b20 init
   initLED();
 }
 
@@ -253,7 +253,7 @@ void initWebserver() {
   // special pages
   server.on("/edit", handleEdit);
   server.on("/reboot", handleReboot);
-  server.on("/reset", handleReset);   // reset only resets sensors.
+  server.on("/reset", handleReset);  // reset only resets sensors.
 
   server.onNotFound([]() {
     server.send(404, "text/plain", "Not found");
@@ -351,15 +351,15 @@ void handleReboot() {
   Serial.println("Reboot request!");
   server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"10;url=/\"></head><body>Reboot in progress...</body></html>"));
   blink(3);
-  delay(2000); // 2s to allow user to download the page
+  delay(2000);  // 2s to allow user to download the page
   ESP.restart();
 }
 
 void handleReset() {
-    Serial.println("Reset request!");
-    server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
-    sensors.begin(); // ds18b20 init
-    blink(4);
+  Serial.println("Reset request!");
+  server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
+  sensors.begin();  // ds18b20 init
+  blink(4);
 }
 
 void handleEdit() {
@@ -446,13 +446,20 @@ String sendHTML(uint16_t refresh) {
       ptr += "  <td title=" + (String)sensorAddresses[deviceNumber] + ">" + (String)friendlyNames[deviceNumber] + "\n";
       value = values[deviceNumber] + compensation[deviceNumber];
       if (value < 0) {
-        valueString = (String)"&minus;" + (String)(-value);
+        valueString = (String) "&minus;" + (String)(-value);
       } else {
         valueString = (String)value;
       }
       ptr += "  <td title=\"" + (String)compensation[deviceNumber] + "\">" + valueString + valueType[deviceNumber] + "\n";
       ptr += "</tr>\n";
     }
+    /* nav */
+    ptr += "\n<tr><td colspan=\"2\" id=\"navtr\"><nav>\n";
+    ptr += "  <a href=\"#\" onclick=\"refreshPage(event);\">refresh</a> | \n";
+    ptr += "  <a href=\"reboot\">reboot</a> | \n";
+    ptr += "  <a href=\"reset\">reset</a>\n";
+    ptr += "</nav></td></tr>\n";
+
     ptr += "</table>\n";
   }
 
@@ -580,7 +587,7 @@ void updateDS18B20Values() {
     sensors.getAddress(Thermometer, deviceNumber);
     address = formatAddressAsHex(Thermometer);
 
-    if (temperature > -127) { // valid result
+    if (temperature > -127) {  // valid result
       addSensor(address, temperature, TYPE_CDEGREE);
       Serial.println("sensor_" + address + "=" + (String)temperature);
     } else {
