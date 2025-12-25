@@ -2,7 +2,7 @@ const char programName[] =
   "KB Sensors station.";
 
 const char programVersion[] =
-  "0.20230103";
+  "0.20251225tmp";
 
 const char programManual[] =
   "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"
@@ -31,6 +31,7 @@ const char programManual[] =
 #include <ESP8266WebServer.h>
 ESP8266WebServer server(80);
 #include <uri/UriRegex.h>
+#include <ArduinoJson.h>
 
 /*
    filesystem
@@ -88,7 +89,9 @@ DeviceAddress Thermometer;
 // we write these tables when reading sensors
 // and read these tables when sending results to user
 uint8_t sensorResultCount = 0;
-#define MAXRESULTSCOUNT 255
+#define MAX_SENSORS 250
+#define MAXRESULTSCOUNT 250
+
 String sensorAddresses[MAXRESULTSCOUNT];  // String, because we use also "DHTtemp" and "DHThumi"; that's also good for easy adding future sensors
 String friendlyNames[MAXRESULTSCOUNT];
 float values[MAXRESULTSCOUNT];
@@ -103,10 +106,16 @@ const String TYPE_CDEGREE = " °C";  // correct notation for Polish language (sp
    tables: sensorsDB
 */
 // this is the sensors database, it is (will be) stored on the device (in EEPROM). Compensation and friendly names.
-String sensorsDBAddresses[MAXRESULTSCOUNT];
-String sensorsDBFriendlyNames[MAXRESULTSCOUNT];
-float sensorsDBCompensation[MAXRESULTSCOUNT];
-uint8_t sensorsDBCount = 0;
+#define CONFIG_FILE "/config.json"
+struct SensorConfig {
+  char address[17];    // 16 hex + \0
+  char name[32];       // friendly name
+  float compensation;  // korekta
+  bool present;        // runtime only
+};
+SensorConfig sensorsSettings[MAX_SENSORS];
+uint16_t sensorsCount = 0;
+
 
 /*
    LED for blinking
@@ -130,7 +139,7 @@ void setup() {
 
   initNetbiosName();
   initWebserver();
-  loadSensorsDB();
+  loadConfig();
   sensors.begin();  // ds18b20 init
   initLED();
 }
@@ -141,7 +150,7 @@ void initLED() {
 }
 
 void initSerial() {
-  Serial.begin(9600);
+  Serial.begin(74880);
   Serial.setTimeout(50);
   showAbout();
   Serial.println("Serial initialized!");
@@ -190,6 +199,53 @@ void initOTA() {
   ArduinoOTA.begin();
 }
 
+bool loadConfig() {
+  if (!LittleFS.exists(CONFIG_FILE)) {
+    Serial.println("Config not found");
+    sensorsCount = 0;
+    return false;
+  }
+
+  File f = LittleFS.open(CONFIG_FILE, "r");
+  if (!f) return false;
+
+  DynamicJsonDocument doc(20000);
+  auto err = deserializeJson(doc, f);
+  f.close();
+
+  if (err) {
+    Serial.println("JSON parse error");
+    return false;
+  }
+
+  JsonArray arr = doc["sensors"];
+  if (!arr) return false;
+
+  sensorsCount = 0;
+
+  for (JsonObject o : arr) {
+    if (sensorsCount >= MAX_SENSORS) break;
+
+    strlcpy(sensorsSettings[sensorsCount].address,
+            o["address"] | "",
+            sizeof(sensorsSettings[sensorsCount].address));
+
+    strlcpy(sensorsSettings[sensorsCount].name,
+            o["name"] | "Sensor",
+            sizeof(sensorsSettings[sensorsCount].name));
+
+    sensorsSettings[sensorsCount].compensation =
+      o["compensation"] | 0.0f;
+
+    sensorsSettings[sensorsCount].present = false;
+    sensorsCount++;
+  }
+
+  Serial.printf("Loaded %u sensors from config\n", sensorsCount);
+  return true;
+}
+
+/*
 void loadSensorsDB() {
   // TODO: load data from EEPROM.
   sensorsDBAddresses[0] = "28D8BE75D0013C7F";
@@ -213,6 +269,30 @@ void loadSensorsDB() {
   sensorsDBCompensation[4] = 0;
 
   sensorsDBCount = 5;
+}
+*/
+
+bool saveConfig() {
+  DynamicJsonDocument doc(20000);
+
+  doc["version"] = programVersion;
+  JsonArray arr = doc.createNestedArray("sensors");
+
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    JsonObject o = arr.createNestedObject();
+    o["address"] = sensorsSettings[i].address;
+    o["name"] = sensorsSettings[i].name;
+    o["compensation"] = sensorsSettings[i].compensation;
+  }
+
+  File f = LittleFS.open(CONFIG_FILE, "w");
+  if (!f) return false;
+
+  serializeJsonPretty(doc, f);
+  f.close();
+
+  Serial.println("Config saved");
+  return true;
 }
 
 void saveSensorsDB() {
@@ -246,7 +326,7 @@ void initWebserver() {
   });
 
   // files to download
-  server.on(UriRegex("^\\/(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg)$"), []() {
+  server.on(UriRegex("^\\/(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"), []() {
     handleFileDownload(server.pathArg(0));
   });
 
@@ -327,7 +407,8 @@ bool handleFileDownload(String path) {
 #endif
 
 void handleClientAskingAboutSensors(String desiredFormat) {
-  bool updated = updateSensorsValues();
+  // bool updated = updateSensorsValues();
+  bool updated = scanSensors();
   if ((desiredFormat == "txt") || (desiredFormat == "text")) {
     server.send(200, "text/plain", sendTXT());
   } else if (desiredFormat == "xml") {
@@ -363,57 +444,105 @@ void handleReset() {
 }
 
 void handleEdit() {
-  String sensorAddress = "";
-  String sensorNewFriendlyName = "";
+  String sensorAddressStr = "";
+  String sensorNewFriendlyNameStr = "";
   float sensorNewCompensation = 0;
 
+  // get arguments from URL
   for (uint8_t i = 0; i < server.args(); i++) {
     if (server.argName(i) == "address") {
-      // TODO: validate input
-      sensorAddress = server.arg(i);
+      sensorAddressStr = server.arg(i);
     } else if (server.argName(i) == "friendlyName") {
-      // TODO: validate input
-      sensorNewFriendlyName = server.arg(i);
+      sensorNewFriendlyNameStr = server.arg(i);
     } else if (server.argName(i) == "compensation") {
-      // TODO: validate input
       sensorNewCompensation = atof(server.arg(i).c_str());
     }
   }
 
-  if ((sensorAddress != "") && (sensorNewFriendlyName != "")) {
-    Serial.println("New name of sensor " + sensorAddress + " is " + sensorNewFriendlyName + "; compensation = " + (String)sensorNewCompensation + ".");
-  } else {
+  // basic validation
+  if ((sensorAddressStr == "") || (sensorNewFriendlyNameStr == "")) {
     Serial.println("Incorrect arguments.");
     server.send(403, "text/plain", "Arguments error. Use ?address=123456789ABCDEF0&friendlyName=new_name&compensation=1.5");
     return;
   }
 
+  // address validation (16 chars HEX)
+  sensorAddressStr.toUpperCase();  // HEX wielkimi literami
+  if (sensorAddressStr.length() != 16) {
+    server.send(403, "text/plain", "Address must be 16 hexadecimal characters.");
+    Serial.println("Invalid address length.");
+    return;
+  }
+  for (char c : sensorAddressStr) {
+    if (!isxdigit(c)) {
+      server.send(403, "text/plain", "Address must contain only HEX characters (0-9, A-F).");
+      Serial.println("Invalid address characters.");
+      return;
+    }
+  }
+
+  // FriendlyName validation (max 32 chars, only safe characters)
+  if (sensorNewFriendlyNameStr.length() > 32) {
+    server.send(403, "text/plain", "Friendly name too long (max 32 characters).");
+    Serial.println("Friendly name too long.");
+    return;
+  }
+  for (char c : sensorNewFriendlyNameStr) {
+    if (c < 32 || c == '<' || c == '>' || c == '&' || c == '"' || c == '\'') {
+      server.send(403, "text/plain", "Friendly name contains invalid characters.");
+      Serial.println("Friendly name has unsafe characters.");
+      return;
+    }
+  }
+
+
+  // conversion String -> char[]
+  char sensorAddress[17];          // 16 znaków HEX + '\0'
+  char sensorNewFriendlyName[33];  // 32 znaki nazwy + '\0'
+  sensorAddressStr.toCharArray(sensorAddress, sizeof(sensorAddress));
+  sensorNewFriendlyNameStr.toCharArray(sensorNewFriendlyName, sizeof(sensorNewFriendlyName));
+
+  // Debug
+  Serial.printf("New name of sensor %s is %s; compensation = %.2f\n", sensorAddress, sensorNewFriendlyName, sensorNewCompensation);
+
+  // było
+  // Serial.println("New name of sensor " + sensorAddressStr + " is " + sensorNewFriendlyNameStr + "; compensation = " + (String)sensorNewCompensation + ".");
+
   if (editSensor(sensorAddress, sensorNewFriendlyName, sensorNewCompensation)) {
+    saveConfig();
     server.send(200, "text/plain", "Sensor saved!");
     Serial.println("Sensor saved.");
   } else {
     server.send(403, "text/plain", "Error while saving sensor.");
-    Serial.println("Error while saving sensor.");
+    Serial.println("Error while saving sensor (Sensor not found & no space for more).");
   }
 }
 
-boolean editSensor(String sensorAddress, String sensorNewFriendlyName, float sensorNewCompensation) {
-  uint8_t sensorDBIndex = getSensorsDBIndex(sensorAddress);
-
-  // sensor doesn't exists
-  if (sensorDBIndex == 255) {
-    sensorDBIndex = sensorsDBCount;
-    sensorsDBCount++;
+// Zwraca true, jeśli sensor został znaleziony i edytowany
+bool editSensor(const char* sensorAddress, const char* newFriendlyName, float newCompensation) {
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    if (strncmp(sensorsSettings[i].address, sensorAddress, sizeof(sensorsSettings[i].address)) == 0) {
+      // Aktualizacja istniejącego sensora
+      strlcpy(sensorsSettings[i].name, newFriendlyName, sizeof(sensorsSettings[i].name));
+      sensorsSettings[i].compensation = newCompensation;
+      return true;
+    }
   }
 
-  sensorsDBAddresses[sensorDBIndex] = sensorAddress;
-  sensorsDBFriendlyNames[sensorDBIndex] = sensorNewFriendlyName;
-  sensorsDBCompensation[sensorDBIndex] = sensorNewCompensation;
+  // Jeśli nie znaleziono – dodajemy nowy sensor (jeśli jest miejsce)
+  if (sensorsCount < MAX_SENSORS) {
+    strlcpy(sensorsSettings[sensorsCount].address, sensorAddress, sizeof(sensorsSettings[sensorsCount].address));
+    strlcpy(sensorsSettings[sensorsCount].name, newFriendlyName, sizeof(sensorsSettings[sensorsCount].name));
+    sensorsSettings[sensorsCount].compensation = newCompensation;
+    sensorsSettings[sensorsCount].present = false;  // nowo dodany sensor jeszcze nie wykryty
+    sensorsCount++;
+    return true;
+  }
 
-  saveSensorsDB();
-
-  return true;
+  // Brak miejsca
+  return false;
 }
+
 
 String sendHTML(uint16_t refresh) {
   String valueString;
@@ -485,6 +614,28 @@ String sendXML() {
 }
 
 String sendTXT() {
+    String output = "";
+
+    for (uint8_t i = 0; i < sensorResultCount; i++) {
+        // if (!sensorsSettings[i].present) continue; // tylko wykryte sensory
+
+        // Zamiana spacji w nazwie na "_", żeby nie psuło TXT/XML/CSV
+        char safeName[33];
+        strlcpy(safeName, sensorsSettings[i].name, sizeof(safeName));
+        for (uint8_t j = 0; j < strlen(safeName); j++) {
+            if (safeName[j] == ' ') safeName[j] = '_';
+        }
+
+        float adjustedValue = values[i] + sensorsSettings[i].compensation;
+
+        output += String(safeName) + ".value " + String(adjustedValue, 2) + "\n";
+    }
+
+    return output;
+}
+
+/* //OLD 
+String sendTXT() {
   String ptr = "";
 
   for (uint8_t deviceNumber = 0; deviceNumber < sensorResultCount; deviceNumber++) {
@@ -492,8 +643,9 @@ String sendTXT() {
     ptr += (String)friendlyNames[deviceNumber] + ".value " + (String)(values[deviceNumber] + compensation[deviceNumber]) + "\n";
   }
   return ptr;
-}
+}*/
 
+/*
 bool updateSensorsValues() {
   unsigned long currentMillis = millis();
 
@@ -518,6 +670,7 @@ bool updateSensorsValues() {
   emptyRestOfTheArray();
   return true;
 }
+
 
 boolean addSensor(String address, float value, String sensorType) {
   if ((sensorResultCount > MAXRESULTSCOUNT) || isnan(value)) {
@@ -572,7 +725,21 @@ void updateDHTValues() {
     }
   }
 }
+*/
 
+float getTemperature(uint16_t idx) {
+  if (!sensorsSettings[idx].present) return NAN;
+
+  DeviceAddress addr;
+  hexStringToAddress(sensorsSettings[idx].address, addr);
+
+  float t = sensors.getTempC(addr);
+  if (t == DEVICE_DISCONNECTED_C) return NAN;
+
+  return t + sensorsSettings[idx].compensation;
+}
+
+/*
 void updateDS18B20Values() {
   float temperature;
   String address;
@@ -605,6 +772,56 @@ uint8_t getSensorsDBIndex(String deviceAddress) {
   return 255;
 }
 
+*/
+
+
+bool scanSensors() {
+  DeviceAddress addr;
+  bool configChanged = false;
+
+  // reset present flags
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    sensorsSettings[i].present = false;
+  }
+
+  uint8_t found = sensors.getDeviceCount();
+
+  for (uint8_t i = 0; i < found; i++) {
+    if (!sensors.getAddress(addr, i)) continue;
+
+    char addrStr[17];
+    for (uint8_t j = 0; j < 8; j++) {
+      sprintf(&addrStr[j * 2], "%02X", addr[j]);
+    }
+    addrStr[16] = '\0';
+
+    // czy już istnieje?
+    int16_t idx = findSensorByAddress(addrStr);
+
+    if (idx >= 0) {
+      sensorsSettings[idx].present = true;
+    } else if (sensorsCount < MAX_SENSORS) {
+      // nowy sensor
+      strlcpy(sensorsSettings[sensorsCount].address, addrStr, 17);
+      snprintf(sensorsSettings[sensorsCount].name,
+               sizeof(sensorsSettings[sensorsCount].name),
+               "Sensor %u", sensorsCount + 1);
+      sensorsSettings[sensorsCount].compensation = 0.0f;
+      sensorsSettings[sensorsCount].present = true;
+      sensorsCount++;
+      configChanged = true;
+    } else {
+      Serial.println("Warning: skipping sensor (MAX_SENSORS limit).");
+    }
+  }
+
+  if (configChanged) {
+    saveConfig();
+  }
+
+  return true;
+}
+
 String formatAddressAsHex(DeviceAddress deviceAddress) {
   String address = "";
   uint8_t oneByte;
@@ -616,6 +833,40 @@ String formatAddressAsHex(DeviceAddress deviceAddress) {
   }
   return address;
 }
+
+int16_t findSensorByAddress(const char* addr) {
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    if (strcmp(sensorsSettings[i].address, addr) == 0)
+      return i;
+  }
+  return -1;
+}
+
+// Zamienia 16-znakowy string HEX na tablicę 8 bajtów
+bool hexStringToAddress(const char* hexString, uint8_t* addr) {
+    if (strlen(hexString) != 16) return false; // walidacja długości
+
+    for (uint8_t i = 0; i < 8; i++) {
+        char high = hexString[i * 2];
+        char low  = hexString[i * 2 + 1];
+
+        auto hexToNibble = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            return -1; // invalid char
+        };
+
+        int h = hexToNibble(high);
+        int l = hexToNibble(low);
+
+        if (h == -1 || l == -1) return false; // niepoprawny znak HEX
+
+        addr[i] = (h << 4) | l;
+    }
+    return true;
+}
+
 
 void blink() {
   blink(1);
