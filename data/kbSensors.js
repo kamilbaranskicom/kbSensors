@@ -102,3 +102,16 @@ function validateWebPasswordForm() {
     }
     return true;
 }
+
+const gear = document.getElementById('settingsIcon');
+const menu = document.getElementById('settingsMenu');
+
+gear.addEventListener('click', (e) => {
+  e.stopPropagation();         // nie zamyka menu przy kliknięciu w ikonę
+  menu.classList.toggle('show');
+});
+
+// ukrycie menu po kliknięciu poza nim
+document.addEventListener('click', () => {
+  menu.classList.remove('show');
+});

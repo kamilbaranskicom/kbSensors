@@ -1,14 +1,9 @@
+unsigned long lastScanTime = 0;
+unsigned long currentWaitInterval = 60000;     // Current wait interval (can be changed by force update)
+const unsigned long SCAN_INTERVAL_MS = 60000;  // 60 seconds
 // the sensors are slow; you can read them not more often than 1s.
-#define SCAN_INTERVAL 60000        // 1 minute
-#define MIN_FORCE_DELAY 2000       // 2 seconds (allowing user to download css/svg/js)
-#define FLOOD_GUARD_INTERVAL 1000  // 1 second
+const unsigned long FLOOD_GUARD_MS = 1000;  // 1 second
 
-static unsigned long lastSensorUpdate = 0;
-static unsigned long forceRequestedAt = 0;
-static bool forcePending = false;
-static bool firstScanDone = false;
-unsigned long nextForcedUpdateAt;
-static unsigned long nextSensorUpdateAt = 0;
 
 
 // for valueType[]
@@ -20,69 +15,56 @@ const char TYPE_CDEGREE[5] = " °C";  // correct notation for Polish language (s
 void initSensors() {
   // sensors.begin();  // ds18b20 init
   scanSensors();
+  registerForceUpdate(0);
 }
 
-bool handleSensors() {
-    unsigned long now = millis();
+void handleSensors() {
+  unsigned long now = millis();
+  unsigned long elapsed = now - lastScanTime;
 
-    // overflow protection
-    if (now < lastSensorUpdate) lastSensorUpdate = 0;
-    if (now < nextForcedUpdateAt) nextForcedUpdateAt = 0;
+  // 1. Flood Guard - absolutny bezpiecznik (arytmetyka unsigned long chroni przed overflow)
+  if (elapsed < FLOOD_GUARD_MS) {
+    return;
+  }
 
-    bool doUpdate = false;
+  // 2. Sprawdzamy, czy upłynął zaplanowany czas (zwykły lub wymuszony)
+  if (elapsed >= currentWaitInterval) {
+    Serial.println("Executing sensor read...");
 
-    // 1. first start
-    if (!firstScanDone) {
-        doUpdate = true;
-    }
-
-    // 2. forced update (independent from SCAN_INTERVAL)
-    if (nextForcedUpdateAt > 0 && now >= nextForcedUpdateAt) {
-        doUpdate = true;
-    }
-
-    // 3. normal periodic update
-    if (now - lastSensorUpdate >= SCAN_INTERVAL) {
-        doUpdate = true;
-    }
-
-    if (!doUpdate) {
-        return false;
-    }
-
+    // --- MIEJSCE NA TWOJE ODCZYTY (np. readDht, readVcc itp.) ---
     scanSensors();
     updateDHTValues();
     updateDS18B20Values();
 
-    lastSensorUpdate = now;
-    nextForcedUpdateAt = 0;
-    firstScanDone = true;
+    // 3. Po wykonaniu odczytu:
+    lastScanTime = millis();                 // Resetujemy czas bazowy
+    currentWaitInterval = SCAN_INTERVAL_MS;  // Przywracamy domyślną minutę
 
-    Serial.println("Sensors updated");
-    return true;
+    Serial.println("Scan finished. Next regular scan in 60s.");
+  }
 }
 
 
 
-void registerForceUpdate(uint8_t intervalSeconds) {
-    unsigned long now = millis();
+void registerForceUpdate(int intervalSeconds) {
+  unsigned long now = millis();
+  unsigned long elapsed = now - lastScanTime;  // Ile czasu już minęło od ostatniego razu
+  unsigned long requestedTotalInterval = elapsed + (intervalSeconds * 1000ULL);
 
-    // handle overflow
-    if (now < lastSensorUpdate) lastSensorUpdate = 0;
-    if (now < nextForcedUpdateAt) nextForcedUpdateAt = 0;
+  // Jeśli nowy całkowity czas oczekiwania jest krótszy niż ten, który mamy zaplanowany...
+  if (requestedTotalInterval < currentWaitInterval) {
+    currentWaitInterval = requestedTotalInterval;
 
-    unsigned long candidate = lastSensorUpdate
-        + max(
-            (unsigned long)intervalSeconds * 1000UL,
-            (unsigned long)FLOOD_GUARD_INTERVAL
-          );
-
-    // zapamiętujemy NAJWCZEŚNIEJSZY możliwy update
-    if (nextForcedUpdateAt == 0 || candidate < nextForcedUpdateAt) {
-        nextForcedUpdateAt = candidate;
+    // Zabezpieczenie: interwał nie może być krótszy niż flood guard
+    if (currentWaitInterval < FLOOD_GUARD_MS) {
+      currentWaitInterval = FLOOD_GUARD_MS;
     }
-  Serial.printf("[FORCE] interval=%u candidate=%lu next=%lu\n", intervalSeconds, candidate, nextSensorUpdateAt);
 
+    Serial.printf("New interval set: trigger in %ds", intervalSeconds);
+    Serial.println();
+  } else {
+    Serial.println("Force update ignored - existing schedule is sooner.");
+  }
 }
 
 
@@ -130,7 +112,6 @@ void updateDHTValues() {
 void updateDS18B20Values() {
   sensors.requestTemperatures();
   uint8_t deviceCount = sensors.getDeviceCount();
-  Serial.println("   " + String(deviceCount) + " DS18B20 sensor(s) requested.");
 
   DeviceAddress addr;
   char addrStr[17];
@@ -162,6 +143,8 @@ void updateDS18B20Values() {
 
     Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
   }
+  Serial.println("   =" + String(deviceCount) + " DS18B20 sensor(s) requested.");
+
 }
 
 bool scanSensors() {
@@ -196,8 +179,8 @@ bool scanSensors() {
     int16_t idx = findSensorByAddress(addrStr);
     if (idx >= 0) {
       sensorsSettings[idx].present = true;
-      Serial.printf("    Sensor present: %s", addrStr);
-      Serial.println();
+      // Serial.printf("    Sensor present: %s", addrStr);
+      // Serial.println();
     } else if (sensorsCount < MAX_SENSORS) {
       strlcpy(sensorsSettings[sensorsCount].address, addrStr, sizeof(sensorsSettings[sensorsCount].address));
       snprintf(sensorsSettings[sensorsCount].name, sizeof(sensorsSettings[sensorsCount].name), "Sensor %u", sensorsCount + 1);

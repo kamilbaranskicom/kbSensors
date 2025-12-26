@@ -1,7 +1,7 @@
-
 /*
    WWW server
 */
+
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
@@ -28,7 +28,7 @@ void initWebserver() {
     server.on("/", []() {
       handleClientAskingAboutSensors("html");
     });
-    
+
     server.on(UriRegex("^\\/(abc|txt|text|html|xml|json)$"),
               []() {
                 handleClientAskingAboutSensors(server.pathArg(0));
@@ -46,7 +46,7 @@ void initWebserver() {
     // special pages
     server.on("/edit", handleEdit);
     server.on("/reboot", handleReboot);
-    server.on("/reset", handleReset);  // reset only resets sensors.
+    server.on("/rescan", handleRescan);
     server.on("/wifi", HTTP_GET, handleWiFiPage);
     server.on("/wifi", HTTP_POST, handleWiFiPage);
 
@@ -117,13 +117,16 @@ bool handleFileDownload(String path) {
 
 
 void handleClientAskingAboutSensors(String desiredFormat) {
-  Serial.println("  Client asked for a " + desiredFormat);
+  Serial.println("  Client requested " + desiredFormat);
   if ((desiredFormat == "txt") || (desiredFormat == "text")) {
     server.send(200, "text/plain", sendTXT());
+    registerForceUpdate(1);
   } else if (desiredFormat == "xml") {
     server.send(200, "text/xml", sendXML());
+    registerForceUpdate(1);
   } else if (desiredFormat == "json") {
     server.send(200, "application/json", sendJSON());
+    registerForceUpdate(1);
   } else {
     uint16_t refreshPageDuration = 0;
     for (uint8_t i = 0; i < server.args(); i++) {
@@ -133,8 +136,8 @@ void handleClientAskingAboutSensors(String desiredFormat) {
       }
     }
     server.send(200, "text/html", sendHTML(refreshPageDuration));
+    registerForceUpdate(2);
   }
-  registerForceUpdate(2);
   blink();
 }
 
@@ -146,10 +149,10 @@ void handleReboot() {
   ESP.restart();
 }
 
-void handleReset() {
-  Serial.println("Reset request!");
-  server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
-  sensors.begin();  // ds18b20 init
+void handleRescan() {
+  Serial.println("Rescan request!");
+  server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Rescan in progress...</body></html>"));
+  registerForceUpdate(1);
   blink(4);
 }
 
@@ -301,12 +304,21 @@ String sendHTML(uint16_t refreshPageDuration) {
       ptr += "  <td title=\"" + (String)sensorsSettings[deviceNumber].compensation + "\">" + valueString + (String)sensorsSettings[deviceNumber].valueType + "\n";
       ptr += "</tr>\n";
     }
+
     /* nav */
-    ptr += "\n<tr><td colspan=\"2\" id=\"navtr\"><nav>\n";
-    ptr += "  <a href=\"#\" onclick=\"refreshPage(event);\">refresh</a> | \n";
-    ptr += "  <a href=\"reboot\">reboot</a> | \n";
-    ptr += "  <a href=\"reset\">reset</a>\n";
-    ptr += "</nav></td></tr>\n";
+    ptr += "<tr>\n";
+    ptr += "  <td colspan=\"2\" id=\"navtr\">\n";
+    ptr += "    <div id=\"settingsContainer\">\n";
+    ptr += "      <span id=\"settingsIcon\">⚙️</span>\n";
+    ptr += "      <nav id=\"settingsMenu\">\n";
+    ptr += "        <a href=\"#\" onclick=\"refreshPage(event);\">refresh page</a> | \n";
+    ptr += "        <a href=\"reboot\">reboot kbSensors</a> | \n";
+    ptr += "        <a href=\"rescan\">rescan sensors</a> | \n";
+    ptr += "        <a href=\"wifi\">settings</a>\n";
+    ptr += "      </nav>\n";
+    ptr += "    </div>\n";
+    ptr += "  </td>\n";
+    ptr += "</tr>\n";
 
     ptr += "</table>\n";
   }
