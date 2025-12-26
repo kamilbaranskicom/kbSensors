@@ -9,6 +9,7 @@ void showAbout() {
   Serial.println("\n\n");
   Serial.println(programName);
   Serial.println(programVersion);
+  Serial.println();
   Serial.println(programManual);
   Serial.println("\n\n");
 }
