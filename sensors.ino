@@ -1,0 +1,246 @@
+// the sensors are slow; you can read them not more often than 1s.
+const unsigned int updateInterval = 1000;
+unsigned long previousMillis = 0;
+
+
+
+
+
+// for valueType[]
+const char TYPE_PERCENT[5] = "%";    // correct notation for Polish language (no space before percent sign)
+const char TYPE_CDEGREE[5] = " °C";  // correct notation for Polish language (space, degree sign, C)
+
+
+
+
+
+void initSensors() {
+  sensors.begin();  // ds18b20 init
+}
+
+bool updateSensorsValues() {
+  unsigned long currentMillis = millis();
+
+  if (currentMillis < previousMillis) {
+    // millis() returns the number of milliseconds passed since the Arduino
+    // board began running the current program. This number will overflow (go
+    // back to zero), after approximately 50 days. This just happened.
+    previousMillis = -updateInterval;
+  }
+
+  if (currentMillis - previousMillis < updateInterval) {
+    // too early from previous update
+    return false;
+  }
+
+  previousMillis = currentMillis;
+
+  updateDHTValues();
+  updateDS18B20Values();
+  return true;
+}
+
+void updateDHTValues() {
+  float temperature = NAN;
+  float humidity = NAN;
+
+  int chk = DHT.read11(DHT11_PIN);
+  if (chk != DHTLIB_OK) {
+    Serial.println("DHT read error!");
+    return;
+  }
+
+  temperature = DHT.getTemperature();
+  humidity = DHT.getHumidity();
+
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    if (strcmp(sensorsSettings[i].address, "DHTtemp") == 0) {
+      if (!isnan(temperature)) {
+        sensorsSettings[i].lastValue = temperature;
+        sensorsSettings[i].lastUpdate = millis();
+        sensorsSettings[i].present = true;
+        strcpy(sensorsSettings[i].valueType, TYPE_CDEGREE);
+        Serial.println("DHT temperature: " + String(temperature) + "°C");
+      } else {
+        Serial.println("Failed to read temperature from DHT sensor!");
+      }
+    }
+    if (strcmp(sensorsSettings[i].address, "DHThumi") == 0) {
+
+      if (!isnan(humidity)) {
+        sensorsSettings[i].lastValue = humidity;
+        sensorsSettings[i].lastUpdate = millis();
+        sensorsSettings[i].present = true;
+        strcpy(sensorsSettings[i].valueType, TYPE_PERCENT);
+        Serial.println("DHT humidity: " + (String)humidity + "%.");
+      } else {
+        Serial.println("Failed to read humidity from DHT sensor!");
+      }
+    }
+  }
+}
+
+
+void updateDS18B20Values() {
+  sensors.requestTemperatures();
+  uint8_t deviceCount = sensors.getDeviceCount();
+  Serial.println(String(deviceCount) + " DS18B20 sensor(s) found.");
+
+  DeviceAddress addr;
+  char addrStr[17];
+
+  for (uint8_t i = 0; i < deviceCount; i++) {
+    if (!sensors.getAddress(addr, i))
+      continue;
+
+    for (uint8_t j = 0; j < 8; j++)
+      sprintf(&addrStr[j * 2], "%02X", addr[j]);
+    addrStr[16] = '\0';
+    int16_t idx = findSensorByAddress(addrStr);
+    if (idx < 0) {
+      Serial.println("-- sensor " + (String)addrStr + " nie w configu.");
+      continue;  // sensor nie w configu
+    }
+
+    float temp = sensors.getTempC(addr);
+
+    if (temp == DEVICE_DISCONNECTED_C) {
+      Serial.println("-- Skipping disconnected (?) sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)temp);
+      continue;
+    }
+
+    sensorsSettings[idx].lastValue = temp;
+    sensorsSettings[idx].lastUpdate = millis();
+    sensorsSettings[idx].present = true;
+    strcpy(sensorsSettings[idx].valueType, TYPE_CDEGREE);
+
+    Serial.println("sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
+  }
+}
+
+bool scanSensors() {
+  DeviceAddress addr;
+  bool configChanged = false;
+
+  // reset present flags
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    sensorsSettings[i].present = false;
+  }
+
+  sensors.begin();
+  delay(50);  // mały czas dla OneWire
+
+  uint8_t found = sensors.getDeviceCount();
+  Serial.printf("scanSensors: %u sensors found on OneWire", found);
+  Serial.println();
+
+  for (uint8_t i = 0; i < found; i++) {
+    if (!sensors.getAddress(addr, i)) {
+      Serial.printf("Failed to get address for sensor %u", i);
+      Serial.println();
+      continue;
+    }
+
+    char addrStr[17];
+    for (uint8_t j = 0; j < 8; j++) {
+      sprintf(&addrStr[j * 2], "%02X", addr[j]);
+    }
+    addrStr[16] = '\0';
+
+    int16_t idx = findSensorByAddress(addrStr);
+    if (idx >= 0) {
+      sensorsSettings[idx].present = true;
+      Serial.printf("Sensor present: %s", addrStr);
+      Serial.println();
+    } else if (sensorsCount < MAX_SENSORS) {
+      strlcpy(sensorsSettings[sensorsCount].address, addrStr, sizeof(sensorsSettings[sensorsCount].address));
+      snprintf(sensorsSettings[sensorsCount].name, sizeof(sensorsSettings[sensorsCount].name), "Sensor %u", sensorsCount + 1);
+      sensorsSettings[sensorsCount].compensation = 0.0f;
+      sensorsSettings[sensorsCount].present = true;
+      Serial.printf("New sensor added: %s", addrStr);
+      Serial.println();
+      sensorsCount++;
+      configChanged = true;
+    } else {
+      Serial.println("Warning: MAX_SENSORS reached. Skipping sensor.");
+    }
+  }
+
+  // ensure if DHT sensors are in the array
+  const char *dhtAddresses[] = { "DHTtemp", "DHThumi" };
+  const char *dhtNames[] = { "Temperatura DHT", "DHThumi" };
+  for (uint8_t i = 0; i < 2; i++) {
+    if (findSensorByAddress(dhtAddresses[i]) < 0) {
+      if (sensorsCount < MAX_SENSORS) {
+        strlcpy(sensorsSettings[sensorsCount].address, dhtAddresses[i], sizeof(sensorsSettings[sensorsCount].address));
+        strlcpy(sensorsSettings[sensorsCount].name, dhtNames[i], sizeof(sensorsSettings[sensorsCount].name));
+        sensorsSettings[sensorsCount].compensation = 0.0f;
+        sensorsSettings[sensorsCount].present = true;  // DHT zawsze obecny
+        sensorsCount++;
+        configChanged = true;
+        Serial.printf("Added DHT sensor: %s\n", dhtAddresses[i]);
+      } else {
+        Serial.println("Warning: MAX_SENSORS reached. Cannot add DHT sensor.");
+      }
+    } else {
+      // if already existed, just mark as present
+      sensorsSettings[findSensorByAddress(dhtAddresses[i])].present = true;
+    }
+  }
+
+  if (configChanged) {
+    saveConfig();
+  }
+
+  return true;
+}
+
+String formatAddressAsHex(DeviceAddress deviceAddress) {
+  String address = "";
+  uint8_t oneByte;
+  char hexChars[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+  for (uint8_t i = 0; i < 8; i++) {
+    oneByte = deviceAddress[i];
+    address += hexChars[(oneByte & 0xF0) >> 4];
+    address += hexChars[oneByte & 0x0F];
+  }
+  return address;
+}
+
+int16_t findSensorByAddress(const char *addr) {
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    if (strcmp(sensorsSettings[i].address, addr) == 0)
+      return i;
+  }
+  return -1;
+}
+
+// Zamienia 16-znakowy string HEX na tablicę 8 bajtów
+bool hexStringToAddress(const char *hexString, uint8_t *addr) {
+  if (strlen(hexString) != 16)
+    return false;  // walidacja długości
+
+  for (uint8_t i = 0; i < 8; i++) {
+    char high = hexString[i * 2];
+    char low = hexString[i * 2 + 1];
+
+    auto hexToNibble = [](char c) -> int {
+      if (c >= '0' && c <= '9')
+        return c - '0';
+      if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+      if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+      return -1;  // invalid char
+    };
+
+    int h = hexToNibble(high);
+    int l = hexToNibble(low);
+
+    if (h == -1 || l == -1)
+      return false;  // niepoprawny znak HEX
+
+    addr[i] = (h << 4) | l;
+  }
+  return true;
+}
