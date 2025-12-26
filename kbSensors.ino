@@ -1,11 +1,11 @@
 
 const char programName[] = "KB Sensors station.";
 
-const char programVersion[] = "0.20251225_k02";
+const char programVersion[] = "0.20251225_k03";
 
 const char programManual[] =
-  "// tiny monitor station for one DHT11 and many DS18B20 sensors\n"
-  "// outputs data at http://kbsensors/ , http://kbsensors/xml , http://kbsensors/txt\n"
+  "// tiny monitor station for one DHT11 and many DS18B20 sensors\r\n"
+  "// outputs data at http://kbsensors/ , http://kbsensors/xml , http://kbsensors/txt\r\n"
   "// https is not available for now. Optional ?refresh=[seconds] for html output.";
 
 
@@ -18,10 +18,6 @@ const char programManual[] =
  ******************************************************************************/
 
 
-
-// copy wifiConfig_sample.h to wifiConfig.h and enter your default ssid/password there; don't worry, it can be changed later with www, but these are the defaults.
-#include "wifiConfig.h"
-// (TODO: config using www?? naah.)
 
 /* uncomment the following line to use REMOTE_HELPER_SERVER instead of local
   files for: kbSensors.js, kbSensors.css and kbSensors.svg
@@ -122,13 +118,6 @@ void setup() {
 #ifndef REMOTE_HELPER_SERVER
   initFileSystem();
 #endif
-
-  // Wczytanie konfiguracji WiFi
-  if (!loadWiFiConfig()) {
-    Serial.println("Nie wczytano konfiguracji WiFi - używane wartości domyślne");
-    wifiSSID = defaultWifiSSID;
-    wifiPassword = defaultWifiPassword;
-  }
 
   initWiFi();
 #ifdef OTA_ENABLED

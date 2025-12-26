@@ -4,11 +4,15 @@
 
 void initWiFi() {
   bool connected = false;
-  if (loadWiFiConfig) {
+
+  Serial.println("Loading WiFi config...");
+  if (loadWiFiConfig()) {
+    Serial.println("trying to start as a station...");
     connected = startSTAMode();
   }
 
   if (!connected) {
+    Serial.println("naah, let's be an AP.");
     startAPMode();
   }
 }
@@ -26,7 +30,10 @@ void startAPMode() {
 // --- STA mode start ---
 bool startSTAMode() {
   Serial.println("Trying to start STA mode...");
-  if (wifiSSID.length() == 0) return false;
+  if (wifiSSID.length() == 0) {
+    Serial.println("wifiSSID.length()=0.");
+    return false;
+  }
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
@@ -47,8 +54,6 @@ bool startSTAMode() {
     Serial.println("Failed to connect to WiFi");
     return false;
   }
-
-
 }
 
 void initNetbiosName() {
@@ -125,8 +130,4 @@ void resetWiFiConfig() {
     LittleFS.remove(WIFI_CONFIG_FILE);
     Serial.println("wifi.json deleted. WiFi configuration reset!");
   }
-  wifiSSID = defaultWifiSSID;
-  wifiPassword = defaultWifiPassword;
-  webUser = "admin";
-  webPass = "admin";
 }

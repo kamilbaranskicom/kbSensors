@@ -13,6 +13,19 @@ void initWebserver() {
   server.close();  // safe to call even if the server isn't running
 
   if (WiFi.getMode() == WIFI_AP) {
+
+    server.on("/wifi", HTTP_GET, handleWiFiPage);
+    server.on("/wifi", HTTP_POST, handleWiFiPage);
+
+    // files to download
+    server.on(
+      UriRegex(
+        "^\\/"
+        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|wifi\\.json)$"),
+      []() {
+        handleFileDownload(server.pathArg(0));
+      });
+
     // simple captive portal: redirect all requests to /wifi
     server.onNotFound([]() {
       server.sendHeader("Location", "/wifi");
