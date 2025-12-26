@@ -1,9 +1,14 @@
 // the sensors are slow; you can read them not more often than 1s.
-const unsigned int updateInterval = 1000;
-unsigned long previousMillis = 0;
+#define SCAN_INTERVAL 60000        // 1 minute
+#define MIN_FORCE_DELAY 2000       // 2 seconds (allowing user to download css/svg/js)
+#define FLOOD_GUARD_INTERVAL 1000  // 1 second
 
-
-
+static unsigned long lastSensorUpdate = 0;
+static unsigned long forceRequestedAt = 0;
+static bool forcePending = false;
+static bool firstScanDone = false;
+unsigned long nextForcedUpdateAt;
+static unsigned long nextSensorUpdateAt = 0;
 
 
 // for valueType[]
@@ -12,33 +17,74 @@ const char TYPE_CDEGREE[5] = " °C";  // correct notation for Polish language (s
 
 
 
-
-
 void initSensors() {
-  sensors.begin();  // ds18b20 init
+  // sensors.begin();  // ds18b20 init
+  scanSensors();
 }
 
-bool updateSensorsValues() {
-  unsigned long currentMillis = millis();
+bool handleSensors() {
+    unsigned long now = millis();
 
-  if (currentMillis < previousMillis) {
-    // millis() returns the number of milliseconds passed since the Arduino
-    // board began running the current program. This number will overflow (go
-    // back to zero), after approximately 50 days. This just happened.
-    previousMillis = -updateInterval;
-  }
+    // overflow protection
+    if (now < lastSensorUpdate) lastSensorUpdate = 0;
+    if (now < nextForcedUpdateAt) nextForcedUpdateAt = 0;
 
-  if (currentMillis - previousMillis < updateInterval) {
-    // too early from previous update
-    return false;
-  }
+    bool doUpdate = false;
 
-  previousMillis = currentMillis;
+    // 1. first start
+    if (!firstScanDone) {
+        doUpdate = true;
+    }
 
-  updateDHTValues();
-  updateDS18B20Values();
-  return true;
+    // 2. forced update (independent from SCAN_INTERVAL)
+    if (nextForcedUpdateAt > 0 && now >= nextForcedUpdateAt) {
+        doUpdate = true;
+    }
+
+    // 3. normal periodic update
+    if (now - lastSensorUpdate >= SCAN_INTERVAL) {
+        doUpdate = true;
+    }
+
+    if (!doUpdate) {
+        return false;
+    }
+
+    scanSensors();
+    updateDHTValues();
+    updateDS18B20Values();
+
+    lastSensorUpdate = now;
+    nextForcedUpdateAt = 0;
+    firstScanDone = true;
+
+    Serial.println("Sensors updated");
+    return true;
 }
+
+
+
+void registerForceUpdate(uint8_t intervalSeconds) {
+    unsigned long now = millis();
+
+    // handle overflow
+    if (now < lastSensorUpdate) lastSensorUpdate = 0;
+    if (now < nextForcedUpdateAt) nextForcedUpdateAt = 0;
+
+    unsigned long candidate = lastSensorUpdate
+        + max(
+            (unsigned long)intervalSeconds * 1000UL,
+            (unsigned long)FLOOD_GUARD_INTERVAL
+          );
+
+    // zapamiętujemy NAJWCZEŚNIEJSZY możliwy update
+    if (nextForcedUpdateAt == 0 || candidate < nextForcedUpdateAt) {
+        nextForcedUpdateAt = candidate;
+    }
+  Serial.printf("[FORCE] interval=%u candidate=%lu next=%lu\n", intervalSeconds, candidate, nextSensorUpdateAt);
+
+}
+
 
 void updateDHTValues() {
   float temperature = NAN;
@@ -60,7 +106,7 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         strcpy(sensorsSettings[i].valueType, TYPE_CDEGREE);
-        Serial.println("DHT temperature: " + String(temperature) + "°C");
+        Serial.println("    DHT temperature: " + String(temperature) + "°C");
       } else {
         Serial.println("Failed to read temperature from DHT sensor!");
       }
@@ -72,7 +118,7 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         strcpy(sensorsSettings[i].valueType, TYPE_PERCENT);
-        Serial.println("DHT humidity: " + (String)humidity + "%.");
+        Serial.println("    DHT humidity: " + (String)humidity + "%.");
       } else {
         Serial.println("Failed to read humidity from DHT sensor!");
       }
@@ -84,7 +130,7 @@ void updateDHTValues() {
 void updateDS18B20Values() {
   sensors.requestTemperatures();
   uint8_t deviceCount = sensors.getDeviceCount();
-  Serial.println(String(deviceCount) + " DS18B20 sensor(s) found.");
+  Serial.println("   " + String(deviceCount) + " DS18B20 sensor(s) requested.");
 
   DeviceAddress addr;
   char addrStr[17];
@@ -114,7 +160,7 @@ void updateDS18B20Values() {
     sensorsSettings[idx].present = true;
     strcpy(sensorsSettings[idx].valueType, TYPE_CDEGREE);
 
-    Serial.println("sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
+    Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
   }
 }
 
@@ -131,7 +177,7 @@ bool scanSensors() {
   delay(50);  // mały czas dla OneWire
 
   uint8_t found = sensors.getDeviceCount();
-  Serial.printf("scanSensors: %u sensors found on OneWire", found);
+  Serial.printf("   scanSensors: %u sensors found on OneWire", found);
   Serial.println();
 
   for (uint8_t i = 0; i < found; i++) {
@@ -150,7 +196,7 @@ bool scanSensors() {
     int16_t idx = findSensorByAddress(addrStr);
     if (idx >= 0) {
       sensorsSettings[idx].present = true;
-      Serial.printf("Sensor present: %s", addrStr);
+      Serial.printf("    Sensor present: %s", addrStr);
       Serial.println();
     } else if (sensorsCount < MAX_SENSORS) {
       strlcpy(sensorsSettings[sensorsCount].address, addrStr, sizeof(sensorsSettings[sensorsCount].address));

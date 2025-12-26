@@ -10,6 +10,7 @@ const char programManual[] =
 
 
 
+
 /******************************************************************************
  *                                                                            *
  *  GLOBALS                                                                   *
@@ -18,7 +19,7 @@ const char programManual[] =
 
 
 
-// copy wifiConfig_sample.h to wifiConfig.h and enter your ssid/password there
+// copy wifiConfig_sample.h to wifiConfig.h and enter your default ssid/password there; don't worry, it can be changed later with www, but these are the defaults.
 #include "wifiConfig.h"
 // (TODO: config using www?? naah.)
 
@@ -98,6 +99,16 @@ uint16_t sensorsCount = 0;
 SensorConfig sensorsSettings[MAX_SENSORS];
 
 
+#define WIFI_CONFIG_FILE "/wifi.json"
+
+// Zmienne globalne do konfiguracji WiFi i logowania
+String wifiSSID = "";
+String wifiPassword = "";
+String webUser = "admin";
+String webPass = "admin";
+
+
+
 /******************************************************************************
  *                                                                            *
  *  CODE                                                                      *
@@ -107,9 +118,18 @@ SensorConfig sensorsSettings[MAX_SENSORS];
 
 void setup() {
   initSerial();
+  initResetButton();
 #ifndef REMOTE_HELPER_SERVER
   initFileSystem();
 #endif
+
+  // Wczytanie konfiguracji WiFi
+  if (!loadWiFiConfig()) {
+    Serial.println("Nie wczytano konfiguracji WiFi - używane wartości domyślne");
+    wifiSSID = defaultWifiSSID;
+    wifiPassword = defaultWifiPassword;
+  }
+
   initWiFi();
 #ifdef OTA_ENABLED
   initOTA();
@@ -126,11 +146,10 @@ void loop() {
   // put your main code here, to run repeatedly:
   // updateSensorsValues();
   handleWebserver();
+  checkResetButton();
+  handleSensors();
 
 #ifdef OTA_ENABLED
   ArduinoOTA.handle();
 #endif
 }
-
-
-

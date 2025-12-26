@@ -91,3 +91,14 @@ function refreshPage(e) {
   document.body.style.opacity = "50%";
   window.location.reload();
 }
+
+function validateWebPasswordForm() {
+    const pass1 = document.forms[0]["webpass"].value;
+    const pass2 = document.forms[0]["webpass2"].value;
+
+    if (pass1 !== pass2) {
+        alert("WWW passwords do not match!");
+        return false;
+    }
+    return true;
+}

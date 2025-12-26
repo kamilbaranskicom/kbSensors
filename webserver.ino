@@ -10,31 +10,50 @@ ESP8266WebServer server(80);
 
 
 void initWebserver() {
-  server.on("/", []() {
-    handleClientAskingAboutSensors("html");
-  });
-  server.on(UriRegex("^\\/(abc|txt|text|html|xml)$"),
-            []() {
-              handleClientAskingAboutSensors(server.pathArg(0));
-            });
+  server.close();  // safe to call even if the server isn't running
 
-  // files to download
-  server.on(
-    UriRegex(
-      "^\\/"
-      "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"),
-    []() {
-      handleFileDownload(server.pathArg(0));
+  if (WiFi.getMode() == WIFI_AP) {
+    // simple captive portal: redirect all requests to /wifi
+    server.onNotFound([]() {
+      server.sendHeader("Location", "/wifi");
+      server.send(302, "text/plain", "");
     });
 
-  // special pages
-  server.on("/edit", handleEdit);
-  server.on("/reboot", handleReboot);
-  server.on("/reset", handleReset);  // reset only resets sensors.
+    server.begin();
+    Serial.println("Webserver started on AP mode");
 
-  server.onNotFound([]() {
-    server.send(404, "text/plain", "Not found");
-  });
+  } else {
+    // STA mode!
+
+    server.on("/", []() {
+      handleClientAskingAboutSensors("html");
+    });
+    
+    server.on(UriRegex("^\\/(abc|txt|text|html|xml|json)$"),
+              []() {
+                handleClientAskingAboutSensors(server.pathArg(0));
+              });
+
+    // files to download
+    server.on(
+      UriRegex(
+        "^\\/"
+        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|wifi\\.json)$"),
+      []() {
+        handleFileDownload(server.pathArg(0));
+      });
+
+    // special pages
+    server.on("/edit", handleEdit);
+    server.on("/reboot", handleReboot);
+    server.on("/reset", handleReset);  // reset only resets sensors.
+    server.on("/wifi", HTTP_GET, handleWiFiPage);
+    server.on("/wifi", HTTP_POST, handleWiFiPage);
+
+    server.onNotFound([]() {
+      server.send(404, "text/plain", "Not found");
+    });
+  };
 
   server.begin();
   Serial.println("HTTP server started!");
@@ -98,12 +117,13 @@ bool handleFileDownload(String path) {
 
 
 void handleClientAskingAboutSensors(String desiredFormat) {
-  bool updated = scanSensors();
-  updated = updateSensorsValues();
+  Serial.println("  Client asked for a " + desiredFormat);
   if ((desiredFormat == "txt") || (desiredFormat == "text")) {
     server.send(200, "text/plain", sendTXT());
   } else if (desiredFormat == "xml") {
     server.send(200, "text/xml", sendXML());
+  } else if (desiredFormat == "json") {
+    server.send(200, "application/json", sendJSON());
   } else {
     uint16_t refreshPageDuration = 0;
     for (uint8_t i = 0; i < server.args(); i++) {
@@ -113,10 +133,9 @@ void handleClientAskingAboutSensors(String desiredFormat) {
       }
     }
     server.send(200, "text/html", sendHTML(refreshPageDuration));
-    if (updated) {
-      blink();
-    }
   }
+  registerForceUpdate(2);
+  blink();
 }
 
 void handleReboot() {
@@ -129,9 +148,7 @@ void handleReboot() {
 
 void handleReset() {
   Serial.println("Reset request!");
-  server.send(
-    200, "text/html",
-    F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
+  server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>Reset in progress...</body></html>"));
   sensors.begin();  // ds18b20 init
   blink(4);
 }
@@ -155,7 +172,7 @@ void handleEdit() {
   // basic validation
   if ((sensorAddressStr == "") || (sensorNewFriendlyNameStr == "")) {
     Serial.println("Incorrect arguments.");
-    server.send(403, "text/plain","Arguments error. Use ?address=123456789ABCDEF0&friendlyName=new_name&compensation=1.5");
+    server.send(403, "text/plain", "Arguments error. Use ?address=123456789ABCDEF0&friendlyName=new_name&compensation=1.5");
     return;
   }
 
@@ -334,7 +351,80 @@ String sendTXT() {
   return output;
 }
 
+String sendJSON() {
+  StaticJsonDocument<1024> doc;  // większy, bo może być dużo DS18B20
+  JsonArray dsArray = doc.createNestedArray("ds18b20");
+
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    JsonObject o = dsArray.createNestedObject();
+    o["name"] = sensorsSettings[i].name;
+    o["address"] = sensorsSettings[i].address;
+    o["value"] = sensorsSettings[i].lastValue;
+    o["compensation"] = sensorsSettings[i].compensation;
+    o["type"] = sensorsSettings[i].valueType;
+  }
+
+  String response;
+  serializeJson(doc, response);
+  return response;
+}
+
+void handleWiFiPage() {
+  String message;
+  // sprawdzenie autoryzacji basic auth
+  if (!server.authenticate(webUser.c_str(), webPass.c_str())) {
+    server.requestAuthentication();
+    return;
+  }
+
+  if (server.method() == HTTP_POST) {
+    if (server.hasArg("ssid")) wifiSSID = server.arg("ssid");
+    if (server.hasArg("wifipassword")) wifiPassword = server.arg("wifipassword");
+    if (server.hasArg("webuser")) webUser = server.arg("webuser");
+
+    if (server.hasArg("webpass") && server.hasArg("webpass2")) {
+      String pass1 = server.arg("webpass");
+      String pass2 = server.arg("webpass2");
+
+      if (pass1.isEmpty() || pass2.isEmpty()) {
+        message = F("<p style='color:red'>WWW password cannot be empty!</p>");
+      } else if (pass1 != pass2) {
+        message = F("<p style='color:red'>WWW passwords do not match!</p>");
+      } else {
+        webPass = pass1;
+        message = F("<html><head><meta http-equiv=\"refresh\" content=\"10;url=/\"></head><body>Settings saved. Reboot in progress...</body></html>");
+      }
+    }
+
+    saveWiFiConfig();
+    server.send(200, "text/html", message);
+    blink(3);
+    delay(2000);  // 2s to allow user to download the page
+    ESP.restart();
+
+    return;
+  }
+
+  // Build HTML page
+  String html = "<html><head>";
+  html += "<link rel='stylesheet' href='/kbSensors.css'>";
+  html += "<script src='/kbSensors.js'></script>";
+  html += "<title>WiFi Configuration</title></head><body>";
+  html += "<h2>WiFi Configuration</h2>";
+  html += message;
+  html += "<form method='POST' onsubmit='return validateWebPasswordForm();'>";
+  html += "SSID: <input name='ssid' value='" + wifiSSID + "'><br>";
+  html += "WiFi Password: <input name='wifipassword' value='" + wifiPassword + "' type='password'><hr>";
+  html += "Username: <input name='webuser' value='" + webUser + "'><br>";
+  html += "WWW Password: <input name='webpass' value='" + webPass + "' type='password'><br>";
+  html += "Confirm WWW Password: <input name='webpass2' value='" + webPass + "' type='password'><hr>";
+  html += "<input type='submit' value='Save'>";
+  html += "</form></body></html>";
+
+  server.send(200, "text/html", html);
+}
+
 
 void handleWebserver() {
-    server.handleClient();
+  server.handleClient();
 }
