@@ -21,7 +21,7 @@ void initWebserver() {
     server.on(
       UriRegex(
         "^\\/"
-        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|wifi\\.json)$"),
+        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"),
       []() {
         handleFileDownload(server.pathArg(0));
       });
@@ -51,7 +51,7 @@ void initWebserver() {
     server.on(
       UriRegex(
         "^\\/"
-        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|wifi\\.json)$"),
+        "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"),
       []() {
         handleFileDownload(server.pathArg(0));
       });
