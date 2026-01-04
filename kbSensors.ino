@@ -77,6 +77,26 @@ DeviceAddress Thermometer;
 
 #define MAX_SENSORS 100
 
+enum SensorType : uint8_t {
+    SENSOR_TEMP = 0,
+    SENSOR_HUMIDITY = 1,
+    SENSOR_PRESSURE = 2,   // na przyszłość
+    SENSOR_AIR_QUALITY = 3 // itd.
+};
+
+const char* sensorTypeStrs[] = {
+    "temperature",   // SENSOR_TEMP
+    "humidity",      // SENSOR_HUMIDITY
+    "pressure",      // SENSOR_PRESSURE
+    "air_quality"    // SENSOR_AIR_QUALITY
+};
+const char* sensorUnits[] = {
+    " °C",   // SENSOR_TEMP
+    "%",      // SENSOR_HUMIDITY
+    "hPa",      // SENSOR_PRESSURE
+    "µg/m³"    // SENSOR_AIR_QUALITY
+}
+
 /*
    tables: sensorsDB
 */
@@ -87,8 +107,10 @@ struct SensorConfig {
   float compensation;   // temperature reading correction
   bool present;         // runtime only
   float lastValue;      // last reading
+  float lastPublishedValue; // runtime only; last mqtt published value
   uint32_t lastUpdate;  // timestamp of last reading
   char valueType[5];    // "%" or " °C" + \0
+  SensorType type;      // typ sensora
 };
 
 uint16_t sensorsCount = 0;
@@ -102,6 +124,10 @@ String wifiSSID = "";
 String wifiPassword = "";
 String webUser = "admin";
 String webPass = "admin";
+
+extern String mqttDeviceId;
+#define MQTT_MAX_PACKET_SIZE 768
+#include <PubSubClient.h>
 
 
 
@@ -128,6 +154,8 @@ void setup() {
   loadConfig();
   initSensors();
   initLED();
+  initMQTT();
+
 }
 
 
@@ -140,5 +168,8 @@ void loop() {
 
 #ifdef OTA_ENABLED
   ArduinoOTA.handle();
+  mqttLoop();
+  handleSerial();
+
 #endif
 }

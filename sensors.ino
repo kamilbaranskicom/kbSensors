@@ -42,6 +42,7 @@ void handleSensors() {
 
     Serial.println("Scan finished. Next regular scan in 60s.");
   }
+  mqttPublishChangedSensors();
 }
 
 
@@ -144,7 +145,6 @@ void updateDS18B20Values() {
     Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
   }
   Serial.println("   =" + String(deviceCount) + " DS18B20 sensor(s) requested.");
-
 }
 
 bool scanSensors() {

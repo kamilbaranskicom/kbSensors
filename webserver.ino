@@ -62,6 +62,9 @@ void initWebserver() {
     server.on("/rescan", handleRescan);
     server.on("/wifi", HTTP_GET, handleWiFiPage);
     server.on("/wifi", HTTP_POST, handleWiFiPage);
+    server.on("/mqtt", HTTP_GET, handleMQTTPage);
+    server.on("/mqtt", HTTP_POST, handleMQTTPage);
+    
 
     server.onNotFound([]() {
       server.send(404, "text/plain", "Not found");
@@ -328,6 +331,7 @@ String sendHTML(uint16_t refreshPageDuration) {
     ptr += "        <a href=\"reboot\">reboot kbSensors</a> | \n";
     ptr += "        <a href=\"rescan\">rescan sensors</a> | \n";
     ptr += "        <a href=\"wifi\">settings</a>\n";
+    ptr += "        <a href=\"mqtt\">mqtt</a>\n";
     ptr += "      </nav>\n";
     ptr += "    </div>\n";
     ptr += "  </td>\n";
@@ -349,7 +353,7 @@ String sendXML() {
     ptr += "<sensor address=\"" + String(sensorsSettings[deviceNumber].address) + "\">\n";
     ptr += "  <name>" + String(sensorsSettings[deviceNumber].name) + "</name>\n";
     ptr += "  <value>" + String(sensorsSettings[deviceNumber].lastValue + sensorsSettings[deviceNumber].compensation) + "</value>\n";
-    ptr += "  <type>" + String(sensorsSettings[deviceNumber].valueType) + "</type>\n";
+    ptr += "  <type>" + String(sensorsSettings[deviceNumber]) + "</type>\n";
     ptr += "</sensor>\n";
   }
   ptr += "</report>";
@@ -450,6 +454,64 @@ void handleWiFiPage() {
 }
 
 
+void handleMQTTPage() {
+  String message;
+
+  // Basic auth jak w WiFi
+  if (!server.authenticate(webUser.c_str(), webPass.c_str())) {
+    server.requestAuthentication();
+    return;
+  }
+
+  if (server.method() == HTTP_POST) {
+    if (server.hasArg("host")) mqtt.host = server.arg("host");
+    if (server.hasArg("port")) mqtt.port = server.arg("port").toInt();
+    if (server.hasArg("user")) mqtt.user = server.arg("user");
+    if (server.hasArg("pass")) mqtt.pass = server.arg("pass");
+    if (server.hasArg("baseTopic")) mqtt.baseTopic = server.arg("baseTopic");
+    if (server.hasArg("enabled")) mqtt.enabled = server.arg("enabled") == "on";
+    if (server.hasArg("qos")) mqtt.qos = server.arg("qos").toInt();
+    if (server.hasArg("retain")) mqtt.retain = server.arg("retain") == "on";
+
+    if (server.hasArg("reset")) {
+      mqtt = MQTTConfig(); // przywróć domyślne wartości
+      message = "<p>MQTT settings reset to defaults</p>";
+    } else {
+      message = "<p>MQTT settings saved</p>";
+    }
+
+    saveMQTTConfig();
+    server.send(200, "text/html", F("<html><head><meta http-equiv=\"refresh\" content=\"2;url=/\"></head><body>") + message + F("</body></html>"));
+    blink(3);
+    return;
+  }
+
+  // Formularz HTML
+  String html = "<html><head>";
+  html += "<link rel='stylesheet' href='/kbSensors.css'>";
+  html += "<script src='/kbSensors.js'></script>";
+  html += "<title>MQTT Configuration</title></head><body>";
+  html += "<h2>MQTT Configuration</h2>";
+  html += message;
+  html += "<form method='POST'>";
+  html += "Host: <input name='host' value='" + mqtt.host + "'><br>";
+  html += "Port: <input name='port' value='" + String(mqtt.port) + "'><br>";
+  html += "User: <input name='user' value='" + mqtt.user + "'><br>";
+  html += "Password: <input name='pass' value='" + mqtt.pass + "' type='password'><br>";
+  html += "Base Topic: <input name='baseTopic' value='" + mqtt.baseTopic + "'><br>";
+  html += "Enabled: <input type='checkbox' name='enabled'" + String(mqtt.enabled ? " checked" : "") + "><br>";
+  html += "QoS: <input name='qos' value='" + String(mqtt.qos) + "'><br>";
+  html += "Retain: <input type='checkbox' name='retain'" + String(mqtt.retain ? " checked" : "") + "><br><hr>";
+  html += "<input type='submit' value='Save'>";
+  html += " <input type='submit' name='reset' value='Reset to defaults'>";
+  html += "</form></body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+
+
 void handleWebserver() {
   server.handleClient();
 }
+
