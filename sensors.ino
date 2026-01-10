@@ -88,6 +88,7 @@ void updateDHTValues() {
         sensorsSettings[i].lastValue = temperature;
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
+        sensorsSettings[i].type = SENSOR_TEMPERATURE;
         strcpy(sensorsSettings[i].valueType, TYPE_CDEGREE);
         Serial.println("    DHT temperature: " + String(temperature) + "°C");
       } else {
@@ -100,6 +101,7 @@ void updateDHTValues() {
         sensorsSettings[i].lastValue = humidity;
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
+        sensorsSettings[i].type = SENSOR_HUMIDITY;
         strcpy(sensorsSettings[i].valueType, TYPE_PERCENT);
         Serial.println("    DHT humidity: " + (String)humidity + "%.");
       } else {
@@ -140,6 +142,7 @@ void updateDS18B20Values() {
     sensorsSettings[idx].lastValue = temp;
     sensorsSettings[idx].lastUpdate = millis();
     sensorsSettings[idx].present = true;
+    sensorsSettings[idx].type = SENSOR_TEMPERATURE;
     strcpy(sensorsSettings[idx].valueType, TYPE_CDEGREE);
 
     Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
@@ -186,6 +189,8 @@ bool scanSensors() {
       snprintf(sensorsSettings[sensorsCount].name, sizeof(sensorsSettings[sensorsCount].name), "Sensor %u", sensorsCount + 1);
       sensorsSettings[sensorsCount].compensation = 0.0f;
       sensorsSettings[sensorsCount].present = true;
+      sensorsSettings[sensorsCount].type = SENSOR_TEMPERATURE;
+
       Serial.printf("New sensor added: %s", addrStr);
       Serial.println();
       sensorsCount++;

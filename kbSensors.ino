@@ -77,25 +77,23 @@ DeviceAddress Thermometer;
 
 #define MAX_SENSORS 100
 
-enum SensorType : uint8_t {
-    SENSOR_TEMP = 0,
-    SENSOR_HUMIDITY = 1,
-    SENSOR_PRESSURE = 2,   // na przyszłość
-    SENSOR_AIR_QUALITY = 3 // itd.
-};
+#include "sensors_types.h"
 
 const char* sensorTypeStrs[] = {
+    "unknown",       // SENSOR_UNKNOWN
     "temperature",   // SENSOR_TEMP
     "humidity",      // SENSOR_HUMIDITY
-    "pressure",      // SENSOR_PRESSURE
-    "air_quality"    // SENSOR_AIR_QUALITY
+//    "pressure",      // SENSOR_PRESSURE
+//    "air_quality"    // SENSOR_AIR_QUALITY
 };
+
 const char* sensorUnits[] = {
+    "",      // SENSOR_UNKNOWN
     " °C",   // SENSOR_TEMP
     "%",      // SENSOR_HUMIDITY
-    "hPa",      // SENSOR_PRESSURE
-    "µg/m³"    // SENSOR_AIR_QUALITY
-}
+//    "hPa",      // SENSOR_PRESSURE
+//    "µg/m³"    // SENSOR_AIR_QUALITY
+};
 
 /*
    tables: sensorsDB

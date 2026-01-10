@@ -193,9 +193,10 @@ void mqttPublishSensor(const SensorConfig &s) {
   float correctedValue = s.lastValue + s.compensation;
 
   const char *typeStr = "unknown";
+  const char *unitStr = "";
   if (s.type < sizeof(sensorTypeStrs) / sizeof(sensorTypeStrs[0])) {
     typeStr = sensorTypeStrs[s.type];
-    unitStr = sensorUnitStrs[s.type];
+    unitStr = sensorUnits[s.type];
   }
 
   String topic =

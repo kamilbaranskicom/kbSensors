@@ -353,7 +353,7 @@ String sendXML() {
     ptr += "<sensor address=\"" + String(sensorsSettings[deviceNumber].address) + "\">\n";
     ptr += "  <name>" + String(sensorsSettings[deviceNumber].name) + "</name>\n";
     ptr += "  <value>" + String(sensorsSettings[deviceNumber].lastValue + sensorsSettings[deviceNumber].compensation) + "</value>\n";
-    ptr += "  <type>" + String(sensorsSettings[deviceNumber]) + "</type>\n";
+    ptr += "  <type>" + String(sensorTypeStrs[sensorsSettings[deviceNumber].type]) + "</type>\n";
     ptr += "</sensor>\n";
   }
   ptr += "</report>";
@@ -390,7 +390,7 @@ String sendJSON() {
     o["address"] = sensorsSettings[i].address;
     o["value"] = sensorsSettings[i].lastValue;
     o["compensation"] = sensorsSettings[i].compensation;
-    o["type"] = sensorsSettings[i].valueType;
+    o["type"] = sensorsSettings[i].type;
   }
 
   String response;
