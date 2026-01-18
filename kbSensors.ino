@@ -166,8 +166,8 @@ void loop() {
 
 #ifdef OTA_ENABLED
   ArduinoOTA.handle();
+#endif
+
   mqttLoop();
   handleSerial();
-
-#endif
 }
