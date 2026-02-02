@@ -1,4 +1,6 @@
 
+#define MQTT_MAX_PACKET_SIZE 1024  // redefined (will trigger warning)
+
 #include <PubSubClient.h>
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -18,9 +20,7 @@ MQTTConfig mqtt;
 String mqttDeviceId;
 WiFiClient wifiClient;
 
-
 unsigned long lastMqttReconnectAttempt = 0;
-
 
 
 void initMQTT() {

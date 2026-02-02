@@ -344,7 +344,7 @@ String sendHTML(uint16_t refreshPageDuration) {
            "page</a> | \n";
     ptr += "        <a href=\"reboot\">reboot kbSensors</a> | \n";
     ptr += "        <a href=\"rescan\">rescan sensors</a> | \n";
-    ptr += "        <a href=\"wifi\">settings</a>\n";
+    ptr += "        <a href=\"wifi\">settings</a> | \n";
     ptr += "        <a href=\"mqtt\">mqtt</a>\n";
     ptr += "      </nav>\n";
     ptr += "    </div>\n";

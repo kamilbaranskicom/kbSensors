@@ -4,10 +4,6 @@ const unsigned long SCAN_INTERVAL_MS = 60000; // 60 seconds
 // the sensors are slow; you can read them not more often than 1s.
 const unsigned long FLOOD_GUARD_MS = 1000; // 1 second
 
-// for valueType[]
-const char TYPE_PERCENT[5] = "%";   // correct notation for Polish language (no space before percent sign)
-const char TYPE_CDEGREE[5] = " °C"; // correct notation for Polish language (space, degree sign, C)
-
 void initSensors() {
   // sensors.begin();  // ds18b20 init
   scanSensors();
@@ -86,8 +82,9 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_TEMPERATURE;
-        strcpy(sensorsSettings[i].valueType, TYPE_CDEGREE);
-        Serial.println("    DHT temperature: " + String(temperature) + "°C");
+        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_TEMPERATURE]);
+        Serial.printf("    DHT temperature: %s%s.", String(temperature), sensorUnits[SENSOR_TEMPERATURE]);
+        Serial.println();
       } else {
         Serial.println("Failed to read temperature from DHT sensor!");
       }
@@ -98,8 +95,9 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_HUMIDITY;
-        strcpy(sensorsSettings[i].valueType, TYPE_PERCENT);
-        Serial.println("    DHT humidity: " + (String)humidity + "%.");
+        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_HUMIDITY]);
+        Serial.printf("    DHT humidity: %s%s.", String(humidity), sensorUnits[SENSOR_HUMIDITY]);
+        Serial.println();
       } else {
         Serial.println("Failed to read humidity from DHT sensor!");
       }
@@ -110,8 +108,9 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_ABSOLUTE_HUMIDITY;
-        strcpy(sensorsSettings[i].valueType, "g/m3");
-        Serial.println("    DHT absolute humidity: " + String(absoluteHumidity) + " g/m3");
+        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_ABSOLUTE_HUMIDITY]);
+        Serial.printf("    DHT absolute humidity: %s%s.", String(absoluteHumidity), sensorUnits[SENSOR_ABSOLUTE_HUMIDITY]);
+        Serial.println();
       } else {
         Serial.println("Failed to read absolute humidity from DHT sensor!");
       }
@@ -157,8 +156,8 @@ void updateDS18B20Values() {
     sensorsSettings[idx].type = SENSOR_TEMPERATURE;
     strcpy(sensorsSettings[idx].valueType, TYPE_CDEGREE);
 
-    Serial.println(
-        "    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)sensorsSettings[idx].lastValue);
+    Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name +
+                   "] = " + (String)sensorsSettings[idx].lastValue + sensorUnits[SENSOR_TEMPERATURE] + ".");
   }
   Serial.println("   =" + String(deviceCount) + " DS18B20 sensor(s) requested.");
 }

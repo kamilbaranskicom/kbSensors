@@ -1,6 +1,16 @@
-#include <ArduinoJson.h>
+/*
+   filesystem
+*/
+#include <LittleFS.h>
+const char *fsName = "LittleFS";
+FS *fileSystem = &LittleFS;
+LittleFSConfig fileSystemConfig = LittleFSConfig();
+static bool fsOK;
 
 #define CONFIG_FILE "/config.json"
+
+#include <ArduinoJson.h>
+
 
 bool loadConfig() {
   if (!LittleFS.exists(CONFIG_FILE)) {
@@ -34,11 +44,9 @@ bool loadConfig() {
     if (sensorsCount >= MAX_SENSORS)
       break;
 
-    strlcpy(sensorsSettings[sensorsCount].address, o["address"] | "",
-            sizeof(sensorsSettings[sensorsCount].address));
+    strlcpy(sensorsSettings[sensorsCount].address, o["address"] | "", sizeof(sensorsSettings[sensorsCount].address));
 
-    strlcpy(sensorsSettings[sensorsCount].name, o["name"] | "Sensor",
-            sizeof(sensorsSettings[sensorsCount].name));
+    strlcpy(sensorsSettings[sensorsCount].name, o["name"] | "Sensor", sizeof(sensorsSettings[sensorsCount].name));
 
     sensorsSettings[sensorsCount].compensation = o["compensation"] | 0.0f;
 
