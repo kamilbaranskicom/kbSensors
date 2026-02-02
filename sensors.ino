@@ -154,7 +154,7 @@ void updateDS18B20Values() {
     sensorsSettings[idx].lastUpdate = millis();
     sensorsSettings[idx].present = true;
     sensorsSettings[idx].type = SENSOR_TEMPERATURE;
-    strcpy(sensorsSettings[idx].valueType, TYPE_CDEGREE);
+    strcpy(sensorsSettings[idx].valueType, sensorUnits[SENSOR_TEMPERATURE]);
 
     Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name +
                    "] = " + (String)sensorsSettings[idx].lastValue + sensorUnits[SENSOR_TEMPERATURE] + ".");
