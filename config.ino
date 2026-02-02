@@ -77,7 +77,7 @@ bool saveConfig() {
     return false;
   }
 
-  if (serializeJson(root, f) == 0) {
+  if (serializeJsonPretty(root, f) == 0) {
     Serial.println("JSON serialization failed!");
     f.close();
     return false;

@@ -63,13 +63,13 @@ void processSerialCommand(const char *line) {
   int scanned = sscanf(line, "%s %d", cmd, &arg);
 
   if (strcmp(cmd, "r") == 0) {
-    Serial.printf("Registering forced sensor update, interval=%d\n", arg);
+    Serial.printf("Registering forced sensor update, interval=%d\r\n", arg);
     registerForceUpdate(arg);  // interval w sekundach
   } else if (strcmp(cmd, "s") == 0) {
     Serial.println(F("Sensors status:"));
     for (int i = 0; i < MAX_SENSORS; i++) {
       if (sensorsSettings[i].present) {
-        Serial.printf("%s [%s]: %.2f%s\n",
+        Serial.printf("%s [%s]: %.2f%s\r\n",
                       sensorsSettings[i].address,
                       sensorsSettings[i].name,
                       sensorsSettings[i].lastValue,
@@ -80,6 +80,6 @@ void processSerialCommand(const char *line) {
     Serial.print(F("MQTT connected: "));
     Serial.println(mqttClient.connected() ? "YES" : "NO");
   } else {
-    Serial.printf("Unknown command: %s\n", line);
+    Serial.printf("Unknown command: %s\r\n", line);
   }
 }

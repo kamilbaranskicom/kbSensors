@@ -30,7 +30,8 @@ void initMQTT() {
 
   Serial.print(F("[MQTT] Device ID: "));
   Serial.println(mqttDeviceId);
-  Serial.printf("(MQTT_MAX_PACKET_SIZE=%d)\n", MQTT_MAX_PACKET_SIZE);
+  Serial.printf("(MQTT_MAX_PACKET_SIZE=%d)", MQTT_MAX_PACKET_SIZE);
+  Serial.println();
 }
 
 
@@ -139,7 +140,8 @@ bool loadMQTTConfig() {
   mqtt.qos = doc["qos"] | mqtt.qos;
   mqtt.retain = doc["retain"] | mqtt.retain;
 
-  Serial.printf("MQTT config loaded: %s:%d (%s)\n", mqtt.host.c_str(), mqtt.port, mqttDeviceId.c_str());
+  Serial.printf("MQTT config loaded: %s:%d (%s)", mqtt.host.c_str(), mqtt.port, mqttDeviceId.c_str());
+  Serial.println();
   return true;
 }
 

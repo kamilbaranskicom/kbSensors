@@ -2,7 +2,7 @@
 const char programName[] = "kbSensors station.";
 const char deviceName[] = "kbSensors";
 
-const char programVersion[] = "0.20260118_k04";
+const char programVersion[] = "0.20260202_k05";
 
 const char programManual[] =
     "// tiny monitor station for one DHT11 and many DS18B20 sensors\r\n"
@@ -59,8 +59,8 @@ static bool fsOK;
 */
 #include "DHTStable.h"
 #define DHT11_PIN                                                              \
-  4 // connect DHT11 to the D2 pin on NodeMCU v3 (don't forget about the
-    // resistor)
+  4 // connect DHT11 to the D2 pin on NodeMCU v3 (don't forget about the \
+     // resistor)
 DHTStable DHT;
 
 /*
@@ -80,19 +80,21 @@ DeviceAddress Thermometer;
 #include "sensors_types.h"
 
 const char *sensorTypeStrs[] = {
-    "unknown",     // SENSOR_UNKNOWN
-    "temperature", // SENSOR_TEMP
-    "humidity",    // SENSOR_HUMIDITY
-                   //    "pressure",      // SENSOR_PRESSURE
-                   //    "air_quality"    // SENSOR_AIR_QUALITY
+    "unknown",         // SENSOR_UNKNOWN
+    "temperature",     // SENSOR_TEMP
+    "humidity",        // SENSOR_HUMIDITY
+    "absoluteHumidity" // SENSOR_ABSOLUTE_HUMIDITY
+                       //    "pressure",      // SENSOR_PRESSURE
+                       //    "air_quality"    // SENSOR_AIR_QUALITY
 };
 
 const char *sensorUnits[] = {
-    "",    // SENSOR_UNKNOWN
-    " °C", // SENSOR_TEMP
-    "%",   // SENSOR_HUMIDITY
-           //    "hPa",      // SENSOR_PRESSURE
-           //    "µg/m³"    // SENSOR_AIR_QUALITY
+    "",     // SENSOR_UNKNOWN
+    " °C",  // SENSOR_TEMP
+    "%",    // SENSOR_HUMIDITY
+    " g/m³" // SENSORS_ABSOLUTE_HUMIDITY
+            //    "hPa",      // SENSOR_PRESSURE
+            //    "µg/m³"    // SENSOR_AIR_QUALITY
 };
 
 /*
@@ -108,7 +110,7 @@ struct SensorConfig {
   float lastValue;          // last reading
   float lastPublishedValue; // runtime only; last mqtt published value
   uint32_t lastUpdate;      // timestamp of last reading
-  char valueType[5];        // "%" or " °C" + \0
+  char valueType[6];        // "%" or " °C" or " g/m3" + \0
   SensorType type;          // typ sensora
 };
 

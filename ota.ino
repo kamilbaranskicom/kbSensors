@@ -13,7 +13,8 @@ void initOTA() {
     Serial.println("OTA start");
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nOTA end");
+    Serial.println();
+    Serial.println("OTA end");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
