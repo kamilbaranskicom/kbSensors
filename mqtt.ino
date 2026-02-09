@@ -170,7 +170,7 @@ bool saveMQTTConfig() {
   return true;
 }
 
-void mqttPublishChangedSensors() {
+void mqttPublishChangedSensors(bool forceAll) {
   for (int i = 0; i < MAX_SENSORS; i++) {
     SensorConfig &s = sensorsSettings[i];
 
@@ -178,11 +178,13 @@ void mqttPublishChangedSensors() {
       continue; // ignoruj brakujące czujniki
 
     float correctedValue = s.lastValue + s.compensation;
-    if (fabs(correctedValue - s.lastPublishedValue) >= 0.01) { // próg zmiany
+    if (forceAll || fabs(correctedValue - s.lastPublishedValue) >= 0.01) { // próg zmiany
       mqttPublishSensor(s);
     }
   }
 }
+
+void mqttPublishChangedSensors() { mqttPublishChangedSensors(false); }
 
 void mqttPublishSensor(const SensorConfig &s) {
   if (!mqttClient.connected())
@@ -264,6 +266,7 @@ void mqttPublishHADiscovery(const SensorConfig &s) {
   serializeJson(doc, payload, sizeof(payload));
 
   mqttClient.publish(discoveryTopic.c_str(), payload, true);
+  Serial.println(F("[MQTT] HA discovery published."));
 }
 
 void publishAllHADiscovery() {
