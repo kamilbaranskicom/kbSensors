@@ -1,19 +1,19 @@
 
-#define MQTT_MAX_PACKET_SIZE 1024  // redefined (will trigger warning)
+#define MQTT_MAX_PACKET_SIZE 1024 // redefined (will trigger warning)
 
 #include <PubSubClient.h>
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
 struct MQTTConfig {
-  String host = "192.168.50.13";   // MQTT broker address
-  uint16_t port = 1883;            // MQTT port
-  String user = "kbSensors";       // username
-  String pass = "uEYxcbuPc6ufKL";  // password
-  String baseTopic = "kbSensors";  // topic base
-  bool enabled = true;             // enable/disable MQTT
-  uint8_t qos = 0;                 // QoS, default 0
-  bool retain = true;              // retain flag
+  String host = "192.168.50.13";  // MQTT broker address
+  uint16_t port = 1883;           // MQTT port
+  String user = "kbSensors";      // username
+  String pass = "uEYxcbuPc6ufKL"; // password
+  String baseTopic = "kbSensors"; // topic base
+  bool enabled = true;            // enable/disable MQTT
+  uint8_t qos = 0;                // QoS, default 0
+  bool retain = true;             // retain flag
 };
 
 MQTTConfig mqtt;
@@ -21,7 +21,6 @@ String mqttDeviceId;
 WiFiClient wifiClient;
 
 unsigned long lastMqttReconnectAttempt = 0;
-
 
 void initMQTT() {
   mqttDeviceId = "kbsensors_" + String(ESP.getChipId(), HEX);
@@ -34,23 +33,23 @@ void initMQTT() {
   Serial.println();
 }
 
-
 bool mqttConnect() {
-  if (!mqtt.enabled) return false;
-  if (mqttClient.connected()) return true;
+  if (!mqtt.enabled)
+    return false;
+  if (mqttClient.connected())
+    return true;
 
   Serial.print(F("[MQTT] Connecting... "));
 
   bool ok;
   if (mqtt.user.length()) {
-    ok = mqttClient.connect(
-      mqttDeviceId.c_str(),
-      mqtt.user.c_str(),
-      mqtt.pass.c_str(),
-      (mqtt.baseTopic + "/" + mqttDeviceId + "/status").c_str(),
-      mqtt.qos,
-      true,
-      "offline");
+    ok = mqttClient.connect(mqttDeviceId.c_str(),
+        mqtt.user.c_str(),
+        mqtt.pass.c_str(),
+        (mqtt.baseTopic + "/" + mqttDeviceId + "/status").c_str(),
+        mqtt.qos,
+        true,
+        "offline");
   } else {
     ok = mqttClient.connect(mqttDeviceId.c_str());
   }
@@ -58,6 +57,7 @@ bool mqttConnect() {
   if (ok) {
     Serial.println(F("OK"));
     mqttPublishStatus("online");
+    publishAllHADiscovery();
   } else {
     Serial.print(F("FAILED rc="));
     Serial.println(mqttClient.state());
@@ -67,22 +67,21 @@ bool mqttConnect() {
 }
 
 void mqttPublishStatus(const char *state) {
-  if (!mqtt.enabled) return;
-  if (!mqttClient.connected()) return;
+  if (!mqtt.enabled)
+    return;
+  if (!mqttClient.connected())
+    return;
 
   String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
 
-  String payload =
-    String("{\"state\":\"") + state + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"uptime\":" + millis() / 1000 + "}";
+  String payload = String("{\"state\":\"") + state + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"uptime\":" + millis() / 1000 + "}";
 
-  mqttClient.publish(
-    topic.c_str(),
-    payload.c_str(),
-    mqtt.retain);
+  mqttClient.publish(topic.c_str(), payload.c_str(), mqtt.retain);
 }
 
 void mqttLoop() {
-  if (!mqtt.enabled) return;
+  if (!mqtt.enabled)
+    return;
 
   if (!mqttClient.connected()) {
     unsigned long now = millis();
@@ -96,15 +95,13 @@ void mqttLoop() {
   mqttClient.loop();
 }
 
-#include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
 // ---------------------------
 // JSON file helpers
 // ---------------------------
 #define MQTT_CONFIG_FILE "/mqtt.json"
-
-
 
 bool loadMQTTConfig() {
   if (!LittleFS.begin()) {
@@ -173,24 +170,23 @@ bool saveMQTTConfig() {
   return true;
 }
 
-
 void mqttPublishChangedSensors() {
   for (int i = 0; i < MAX_SENSORS; i++) {
     SensorConfig &s = sensorsSettings[i];
 
-    if (!s.present) continue;  // ignoruj brakujące czujniki
+    if (!s.present)
+      continue; // ignoruj brakujące czujniki
 
     float correctedValue = s.lastValue + s.compensation;
-    if (fabs(correctedValue - s.lastPublishedValue) >= 0.01) {  // próg zmiany
+    if (fabs(correctedValue - s.lastPublishedValue) >= 0.01) { // próg zmiany
       mqttPublishSensor(s);
     }
   }
 }
 
-
-
 void mqttPublishSensor(const SensorConfig &s) {
-  if (!mqttClient.connected()) return;
+  if (!mqttClient.connected())
+    return;
 
   float correctedValue = s.lastValue + s.compensation;
 
@@ -201,8 +197,7 @@ void mqttPublishSensor(const SensorConfig &s) {
     unitStr = sensorUnits[s.type];
   }
 
-  String topic =
-    mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + String(typeStr) + "/" + s.address;
+  String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + String(typeStr) + "/" + s.address;
 
   StaticJsonDocument<256> doc;
   doc["address"] = s.address;
@@ -219,4 +214,62 @@ void mqttPublishSensor(const SensorConfig &s) {
 
   // zapamiętanie, że już wysłano
   const_cast<SensorConfig &>(s).lastPublishedValue = correctedValue;
+}
+
+void mqttPublishHADiscovery(const SensorConfig &s) {
+  if (!mqttClient.connected())
+    return;
+
+  const char *typeStr = sensorTypeStrs[s.type];
+  const char *unitStr = sensorUnits[s.type];
+
+  // HA component (na razie wszystko jako sensor)
+  const char *component = "sensor";
+
+  String uniqueId = mqttDeviceId + "_" + typeStr + "_" + s.address;
+
+  String discoveryTopic = "homeassistant/" + String(component) + "/" + uniqueId + "/config";
+
+  String stateTopic = mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + typeStr + "/" + s.address;
+
+  StaticJsonDocument<512> doc;
+
+  doc["name"] = String(s.name) + " " + typeStr;
+  doc["unique_id"] = uniqueId;
+  doc["state_topic"] = stateTopic;
+  doc["unit_of_measurement"] = unitStr;
+  doc["value_template"] = "{{ value_json.value }}";
+  doc["availability_topic"] = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
+  doc["payload_available"] = "online";
+  doc["payload_not_available"] = "offline";
+
+  // device_class (tylko jeśli znany)
+  if (strcmp(typeStr, "temperature") == 0)
+    doc["device_class"] = "temperature";
+  else if (strcmp(typeStr, "humidity") == 0)
+    doc["device_class"] = "humidity";
+  else if (strcmp(typeStr, "eco2") == 0)
+    doc["device_class"] = "carbon_dioxide";
+  else if (strcmp(typeStr, "tvoc") == 0)
+    doc["device_class"] = "volatile_organic_compounds";
+
+  // wspólne urządzenie
+  JsonObject device = doc.createNestedObject("device");
+  device["identifiers"][0] = mqttDeviceId;
+  device["name"] = deviceName;
+  device["model"] = "kbSensors";
+  device["manufacturer"] = "Kamil Baranski";
+
+  char payload[512];
+  serializeJson(doc, payload, sizeof(payload));
+
+  mqttClient.publish(discoveryTopic.c_str(), payload, true);
+}
+
+void publishAllHADiscovery() {
+  for (int i = 0; i < MAX_SENSORS; i++) {
+    if (sensorsSettings[i].present) {
+      mqttPublishHADiscovery(sensorsSettings[i]);
+    }
+  }
 }

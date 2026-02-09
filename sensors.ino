@@ -237,6 +237,7 @@ bool scanSensors() {
 
   if (configChanged) {
     saveConfig();
+    publishAllHADiscovery();
   }
 
   return true;
