@@ -8,6 +8,8 @@
 ESP8266WebServer server(80);
 #include <uri/UriRegex.h>
 
+#include "sensors_types.h"
+
 void initWebserver() {
   server.close(); // safe to call even if the server isn't running
 
@@ -17,10 +19,8 @@ void initWebserver() {
     server.on("/wifi", HTTP_POST, handleWiFiPage);
 
     // files to download
-    server.on(
-        UriRegex(
-            "^\\/"
-            "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"),
+    server.on(UriRegex("^\\/"
+                       "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|mqtt\\.json|wifi\\.json)$"),
         []() { handleFileDownload(server.pathArg(0)); });
 
     // simple captive portal: redirect all requests to /wifi
@@ -37,14 +37,11 @@ void initWebserver() {
 
     server.on("/", []() { handleClientAskingAboutSensors("html"); });
 
-    server.on(UriRegex("^\\/(abc|txt|text|html|xml|json)$"),
-              []() { handleClientAskingAboutSensors(server.pathArg(0)); });
+    server.on(UriRegex("^\\/(abc|txt|text|html|xml|json)$"), []() { handleClientAskingAboutSensors(server.pathArg(0)); });
 
     // files to download
-    server.on(
-        UriRegex(
-            "^\\/"
-            "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json)$"),
+    server.on(UriRegex("^\\/"
+                       "(kbSensors\\.css|kbSensors\\.js|kbSensors\\.svg|config\\.json|mqtt\\.json|wifi\\.json)$"),
         []() { handleFileDownload(server.pathArg(0)); });
 
     // special pages
@@ -56,9 +53,7 @@ void initWebserver() {
     server.on("/mqtt", HTTP_GET, handleMQTTPage);
     server.on("/mqtt", HTTP_POST, handleMQTTPage);
 
-    server.on("/description.xml", HTTP_GET, []() {
-      server.send(200, "text/xml", getSSDPDescriptionString());
-    });
+    server.on("/description.xml", HTTP_GET, []() { server.send(200, "text/xml", getSSDPDescriptionString()); });
 
     server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
   };
@@ -83,8 +78,7 @@ void initFileSystem() {
   fileSystemConfig.setAutoFormat(false);
   fileSystem->setConfig(fileSystemConfig);
   fsOK = fileSystem->begin();
-  Serial.println(fsOK ? F("Filesystem initialized.")
-                      : F("Filesystem init failed!"));
+  Serial.println(fsOK ? F("Filesystem initialized.") : F("Filesystem init failed!"));
 }
 
 bool handleFileDownload(String path) {
@@ -149,10 +143,11 @@ void handleClientAskingAboutSensors(String desiredFormat) {
 
 void handleReboot() {
   Serial.println("Reboot request!");
-  server.send(200, "text/html",
-              F("<html><head><meta http-equiv=\"refresh\" "
-                "content=\"10;url=/\"></head><body>Reboot in "
-                "progress...</body></html>"));
+  server.send(200,
+      "text/html",
+      F("<html><head><meta http-equiv=\"refresh\" "
+        "content=\"10;url=/\"></head><body>Reboot in "
+        "progress...</body></html>"));
   blink(3);
   delay(2000); // 2s to allow user to download the page
   ESP.restart();
@@ -160,10 +155,11 @@ void handleReboot() {
 
 void handleRescan() {
   Serial.println("Rescan request!");
-  server.send(200, "text/html",
-              F("<html><head><meta http-equiv=\"refresh\" "
-                "content=\"2;url=/\"></head><body>Rescan in "
-                "progress...</body></html>"));
+  server.send(200,
+      "text/html",
+      F("<html><head><meta http-equiv=\"refresh\" "
+        "content=\"2;url=/\"></head><body>Rescan in "
+        "progress...</body></html>"));
   registerForceUpdate(1);
   blink(4);
 }
@@ -187,8 +183,8 @@ void handleEdit() {
   // basic validation
   if ((sensorAddressStr == "") || (sensorNewFriendlyNameStr == "")) {
     Serial.println("Incorrect arguments.");
-    server.send(
-        403, "text/plain",
+    server.send(403,
+        "text/plain",
         "Arguments error. Use "
         "?address=123456789ABCDEF0&friendlyName=new_name&compensation=1.5");
     return;
@@ -199,15 +195,13 @@ void handleEdit() {
   if (!isDHT) {
     sensorAddressStr.toUpperCase(); // HEX wielkimi literami
     if (sensorAddressStr.length() != 16) {
-      server.send(403, "text/plain",
-                  "Address must be 16 hexadecimal characters.");
+      server.send(403, "text/plain", "Address must be 16 hexadecimal characters.");
       Serial.println("Invalid address length.");
       return;
     }
     for (char c : sensorAddressStr) {
       if (!isxdigit(c)) {
-        server.send(403, "text/plain",
-                    "Address must contain only HEX characters (0-9, A-F).");
+        server.send(403, "text/plain", "Address must contain only HEX characters (0-9, A-F).");
         Serial.println("Invalid address characters.");
         return;
       }
@@ -216,15 +210,13 @@ void handleEdit() {
 
   // FriendlyName validation (max 32 chars, only safe characters)
   if (sensorNewFriendlyNameStr.length() > 32) {
-    server.send(403, "text/plain",
-                "Friendly name too long (max 32 characters).");
+    server.send(403, "text/plain", "Friendly name too long (max 32 characters).");
     Serial.println("Friendly name too long.");
     return;
   }
   for (char c : sensorNewFriendlyNameStr) {
     if (c < 32 || c == '<' || c == '>' || c == '&' || c == '"' || c == '\'') {
-      server.send(403, "text/plain",
-                  "Friendly name contains invalid characters.");
+      server.send(403, "text/plain", "Friendly name contains invalid characters.");
       Serial.println("Friendly name has unsafe characters.");
       return;
     }
@@ -234,12 +226,10 @@ void handleEdit() {
   char sensorAddress[17];         // 16 znaków HEX + '\0'
   char sensorNewFriendlyName[33]; // 32 znaki nazwy + '\0'
   sensorAddressStr.toCharArray(sensorAddress, sizeof(sensorAddress));
-  sensorNewFriendlyNameStr.toCharArray(sensorNewFriendlyName,
-                                       sizeof(sensorNewFriendlyName));
+  sensorNewFriendlyNameStr.toCharArray(sensorNewFriendlyName, sizeof(sensorNewFriendlyName));
 
   // Debug
-  Serial.printf("New name of sensor %s is %s; compensation = %.2f",
-                sensorAddress, sensorNewFriendlyName, sensorNewCompensation);
+  Serial.printf("New name of sensor %s is %s; compensation = %.2f", sensorAddress, sensorNewFriendlyName, sensorNewCompensation);
   Serial.println();
 
   if (editSensor(sensorAddress, sensorNewFriendlyName, sensorNewCompensation)) {
@@ -248,20 +238,16 @@ void handleEdit() {
     Serial.println("Sensor saved.");
   } else {
     server.send(403, "text/plain", "Error while saving sensor.");
-    Serial.println(
-        "Error while saving sensor (Sensor not found & no space for more).");
+    Serial.println("Error while saving sensor (Sensor not found & no space for more).");
   }
 }
 
 // Returns true on success, false if sensor not found and no space for more
-bool editSensor(const char *sensorAddress, const char *newFriendlyName,
-                float newCompensation) {
+bool editSensor(const char *sensorAddress, const char *newFriendlyName, float newCompensation) {
   for (uint16_t i = 0; i < sensorsCount; i++) {
-    if (strncmp(sensorsSettings[i].address, sensorAddress,
-                sizeof(sensorsSettings[i].address)) == 0) {
+    if (strncmp(sensorsSettings[i].address, sensorAddress, sizeof(sensorsSettings[i].address)) == 0) {
       // Aktualizacja istniejącego sensora
-      strlcpy(sensorsSettings[i].name, newFriendlyName,
-              sizeof(sensorsSettings[i].name));
+      strlcpy(sensorsSettings[i].name, newFriendlyName, sizeof(sensorsSettings[i].name));
       sensorsSettings[i].compensation = newCompensation;
       return true;
     }
@@ -269,13 +255,10 @@ bool editSensor(const char *sensorAddress, const char *newFriendlyName,
 
   // If not found, add new sensor if there is space
   if (sensorsCount < MAX_SENSORS) {
-    strlcpy(sensorsSettings[sensorsCount].address, sensorAddress,
-            sizeof(sensorsSettings[sensorsCount].address));
-    strlcpy(sensorsSettings[sensorsCount].name, newFriendlyName,
-            sizeof(sensorsSettings[sensorsCount].name));
+    strlcpy(sensorsSettings[sensorsCount].address, sensorAddress, sizeof(sensorsSettings[sensorsCount].address));
+    strlcpy(sensorsSettings[sensorsCount].name, newFriendlyName, sizeof(sensorsSettings[sensorsCount].name));
     sensorsSettings[sensorsCount].compensation = newCompensation;
-    sensorsSettings[sensorsCount].present =
-        false; // newly added sensor = not checked as present yet
+    sensorsSettings[sensorsCount].present = false; // newly added sensor = not checked as present yet
     sensorsCount++;
     return true;
   }
@@ -297,16 +280,12 @@ String sendHTML(uint16_t refreshPageDuration) {
   ptr += "  <title>" + (String)programName + "</title>\n";
   ptr += "  <link rel=\"stylesheet\" href=\"/kbSensors.css\">\n";
   ptr += "  <script src=\"/kbSensors.js\" defer></script>\n";
-  ptr +=
-      "  <link rel=\"icon\" href=\"/kbSensors.svg\" type=\"image/svg+xml\">\n";
-  ptr += "  <meta name=\"generator\" content=\"" + (String)programName + " " +
-         (String)programVersion + "\">\n";
-  ptr += "  <meta name=\"description\" content=\"" + (String)programManual +
-         "\">\n";
+  ptr += "  <link rel=\"icon\" href=\"/kbSensors.svg\" type=\"image/svg+xml\">\n";
+  ptr += "  <meta name=\"generator\" content=\"" + (String)programName + " " + (String)programVersion + "\">\n";
+  ptr += "  <meta name=\"description\" content=\"" + (String)programManual + "\">\n";
 
   if (refreshPageDuration > 0) {
-    ptr += "  <meta http-equiv=\"refresh\" content=\"" +
-           (String)refreshPageDuration + "\">\n";
+    ptr += "  <meta http-equiv=\"refresh\" content=\"" + (String)refreshPageDuration + "\">\n";
   }
 
   ptr += "</head>\n";
@@ -315,22 +294,21 @@ String sendHTML(uint16_t refreshPageDuration) {
 
   if (sensorsCount > 0) {
     ptr += "<table>\n";
-    for (uint8_t deviceNumber = 0; deviceNumber < sensorsCount;
-         deviceNumber++) {
+    for (uint16_t i = 0; i < sensorsCount; i++) {
+      SensorConfig s = sensorsSettings[i];
+      if (!s.present) {
+        continue;
+      }
+
       ptr += "<tr>\n";
-      ptr += "  <td title=" + (String)sensorsSettings[deviceNumber].address +
-             ">" + (String)sensorsSettings[deviceNumber].name + "\n";
-      value = sensorsSettings[deviceNumber].lastValue +
-              sensorsSettings[deviceNumber].compensation;
+      ptr += "  <td title=" + (String)s.address + ">" + (String)s.name + "\n";
+      value = s.lastValue + s.compensation;
       if (value < 0) {
         valueString = (String) "&minus;" + (String)(-value);
       } else {
         valueString = (String)value;
       }
-      ptr += "  <td title=\"" +
-             (String)sensorsSettings[deviceNumber].compensation + "\">" +
-             valueString + (String)sensorsSettings[deviceNumber].valueType +
-             "\n";
+      ptr += "  <td title=\"" + (String)(s.compensation) + "\">" + valueString + (String)getSensorUnits(s) + "\n";
       ptr += "</tr>\n";
     }
 
@@ -363,18 +341,16 @@ String sendXML() {
   String ptr = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
   ptr += "<report>\n";
 
-  for (uint8_t deviceNumber = 0; deviceNumber < sensorsCount; deviceNumber++) {
-    ptr += "<sensor address=\"" +
-           String(sensorsSettings[deviceNumber].address) + "\">\n";
-    ptr +=
-        "  <name>" + String(sensorsSettings[deviceNumber].name) + "</name>\n";
-    ptr += "  <value>" +
-           String(sensorsSettings[deviceNumber].lastValue +
-                  sensorsSettings[deviceNumber].compensation) +
-           "</value>\n";
-    ptr += "  <type>" +
-           String(sensorTypeStrs[sensorsSettings[deviceNumber].type]) +
-           "</type>\n";
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    SensorConfig s = sensorsSettings[i];
+    if (!s.present) {
+      continue;
+    }
+
+    ptr += "<sensor address=\"" + String(s.address) + "\">\n";
+    ptr += "  <name>" + String(s.name) + "</name>\n";
+    ptr += "  <value>" + String(s.lastValue + s.compensation) + "</value>\n";
+    ptr += "  <type>" + String(sensorTypeStrs[s.type]) + "</type>\n";
     ptr += "</sensor>\n";
   }
   ptr += "</report>";
@@ -391,12 +367,13 @@ String sendTXT() {
   String output = "";
 
   for (uint16_t i = 0; i < sensorsCount; i++) {
-    if (!sensorsSettings[i].present)
-      continue; // tylko wykryte sensory
-    float adjustedValue =
-        sensorsSettings[i].lastValue + sensorsSettings[i].compensation;
-    output += makeSafeName(sensorsSettings[i].name) + ".value " +
-              String(adjustedValue, 2) + "\n";
+    SensorConfig s = sensorsSettings[i];
+    if (!s.present) {
+      continue;
+    }
+
+    float adjustedValue = s.lastValue + s.compensation;
+    output += makeSafeName(s.name) + ".value " + String(adjustedValue, 2) + "\n";
   }
 
   return output;
@@ -407,12 +384,16 @@ String sendJSON() {
   JsonArray dsArray = doc.createNestedArray("ds18b20");
 
   for (uint16_t i = 0; i < sensorsCount; i++) {
+    SensorConfig s = sensorsSettings[i];
+    if (!s.present) {
+      continue;
+    }
     JsonObject o = dsArray.createNestedObject();
-    o["name"] = sensorsSettings[i].name;
-    o["address"] = sensorsSettings[i].address;
-    o["value"] = sensorsSettings[i].lastValue;
-    o["compensation"] = sensorsSettings[i].compensation;
-    o["type"] = sensorsSettings[i].type;
+    o["name"] = s.name;
+    o["address"] = s.address;
+    o["value"] = s.lastValue;
+    o["compensation"] = s.compensation;
+    o["type"] = getSensorType(s);
   }
 
   String response;
@@ -470,13 +451,10 @@ void handleWiFiPage() {
   html += message;
   html += "<form method='POST' onsubmit='return validateWebPasswordForm();'>";
   html += "SSID: <input name='ssid' value='" + wifiSSID + "'><br>";
-  html += "WiFi Password: <input name='wifipassword' value='" + wifiPassword +
-          "' type='password'><hr>";
+  html += "WiFi Password: <input name='wifipassword' value='" + wifiPassword + "' type='password'><hr>";
   html += "Username: <input name='webuser' value='" + webUser + "'><br>";
-  html += "WWW Password: <input name='webpass' value='" + webPass +
-          "' type='password'><br>";
-  html += "Confirm WWW Password: <input name='webpass2' value='" + webPass +
-          "' type='password'><hr>";
+  html += "WWW Password: <input name='webpass' value='" + webPass + "' type='password'><br>";
+  html += "Confirm WWW Password: <input name='webpass2' value='" + webPass + "' type='password'><hr>";
   html += "<input type='submit' value='Save'>";
   html += "</form></body></html>";
 
@@ -518,10 +496,11 @@ void handleMQTTPage() {
     }
 
     saveMQTTConfig();
-    server.send(200, "text/html",
-                F("<html><head><meta http-equiv=\"refresh\" "
-                  "content=\"2;url=/\"></head><body>") +
-                    message + F("</body></html>"));
+    server.send(200,
+        "text/html",
+        F("<html><head><meta http-equiv=\"refresh\" "
+          "content=\"2;url=/\"></head><body>") +
+            message + F("</body></html>"));
     blink(3);
     return;
   }
@@ -537,15 +516,11 @@ void handleMQTTPage() {
   html += "Host: <input name='host' value='" + mqtt.host + "'><br>";
   html += "Port: <input name='port' value='" + String(mqtt.port) + "'><br>";
   html += "User: <input name='user' value='" + mqtt.user + "'><br>";
-  html += "Password: <input name='pass' value='" + mqtt.pass +
-          "' type='password'><br>";
-  html +=
-      "Base Topic: <input name='baseTopic' value='" + mqtt.baseTopic + "'><br>";
-  html += "Enabled: <input type='checkbox' name='enabled'" +
-          String(mqtt.enabled ? " checked" : "") + "><br>";
+  html += "Password: <input name='pass' value='" + mqtt.pass + "' type='password'><br>";
+  html += "Base Topic: <input name='baseTopic' value='" + mqtt.baseTopic + "'><br>";
+  html += "Enabled: <input type='checkbox' name='enabled'" + String(mqtt.enabled ? " checked" : "") + "><br>";
   html += "QoS: <input name='qos' value='" + String(mqtt.qos) + "'><br>";
-  html += "Retain: <input type='checkbox' name='retain'" +
-          String(mqtt.retain ? " checked" : "") + "><br><hr>";
+  html += "Retain: <input type='checkbox' name='retain'" + String(mqtt.retain ? " checked" : "") + "><br><hr>";
   html += "<input type='submit' value='Save'>";
   html += " <input type='submit' name='reset' value='Reset to defaults'>";
   html += "</form></body></html>";
