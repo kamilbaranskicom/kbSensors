@@ -65,13 +65,11 @@ void processSerialCommand(const char *line) {
   } else if (strcmp(cmd, "s") == 0) {
     Serial.println(F("Sensors status:"));
     for (int i = 0; i < MAX_SENSORS; i++) {
-      if (sensorsSettings[i].present) {
-        Serial.printf("%s [%s]: %.2f%s\r\n",
-            sensorsSettings[i].address,
-            sensorsSettings[i].name,
-            sensorsSettings[i].lastValue,
-            sensorsSettings[i].valueType);
+      SensorConfig s = sensorsSettings[i];
+      if (!s.present) {
+        continue;
       }
+      Serial.printf("%s [%s]: %.2f%s\r\n", s.address, s.name, s.lastValue, getSensorUnits(s));
     }
   } else if (strcmp(cmd, "mpd") == 0) {
     publishAllHADiscovery();
