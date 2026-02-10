@@ -5,36 +5,28 @@ const unsigned long SCAN_INTERVAL_MS = 60000; // 60 seconds
 const unsigned long FLOOD_GUARD_MS = 1000; // 1 second
 
 void initSensors() {
-  // sensors.begin();  // ds18b20 init
+  // Reconfiguring I2C bus to avoid Flash pin conflicts
+  Wire.begin(I2C_SDA, I2C_SCL);
+
   scanSensors();
   registerForceUpdate(0);
 }
 
-void handleSensors() {
-  unsigned long now = millis();
-  unsigned long elapsed = now - lastScanTime;
-
-  // 1. Flood Guard - absolutny bezpiecznik (arytmetyka unsigned long chroni przed overflow)
-  if (elapsed < FLOOD_GUARD_MS) {
-    return;
+bool scanSensors() {
+  // reset present flags
+  for (uint16_t i = 0; i < sensorsCount; i++) {
+    sensorsSettings[i].present = false;
   }
 
-  // 2. Sprawdzamy, czy upłynął zaplanowany czas (zwykły lub wymuszony)
-  if (elapsed >= currentWaitInterval) {
-    Serial.println("Executing sensor read...");
+  // Wykorzystujemy bitowy OR (|), aby każda funkcja się wykonała
+  bool changed = ds18b20_scan() | dht_scan() | ccs811_scan();
 
-    // --- MIEJSCE NA TWOJE ODCZYTY (np. readDht, readVcc itp.) ---
-    scanSensors();
-    updateDHTValues();
-    updateDS18B20Values();
-
-    // 3. Po wykonaniu odczytu:
-    lastScanTime = millis();                // Resetujemy czas bazowy
-    currentWaitInterval = SCAN_INTERVAL_MS; // Przywracamy domyślną minutę
-
-    Serial.println("Scan finished. Next regular scan in 60s.");
+  if (changed) {
+    saveConfig();
+    publishAllHADiscovery();
   }
-  mqttPublishChangedSensors();
+
+  return changed;
 }
 
 void registerForceUpdate(int intervalSeconds) {
@@ -58,197 +50,56 @@ void registerForceUpdate(int intervalSeconds) {
   }
 }
 
-void updateDHTValues() {
-  float temperature = NAN;
-  float humidity = NAN;
-  float absoluteHumidity = NAN;
-
-  int chk = DHT.read11(DHT11_PIN);
-  if (chk != DHTLIB_OK) {
-    Serial.println("DHT read error!");
+void handleSensors() {
+  unsigned long now = millis();
+  if (now - lastScanTime < FLOOD_GUARD_MS)
     return;
-  }
 
-  temperature = DHT.getTemperature();
-  humidity = DHT.getHumidity();
-  if (!isnan(temperature) && !isnan(humidity)) {
-    absoluteHumidity = calculateAbsoluteHumidity(temperature, humidity);
-  }
+  // 2. Sprawdzamy, czy upłynął zaplanowany czas (zwykły lub wymuszony)
+  if (now - lastScanTime >= currentWaitInterval) {
+    Serial.println("Executing sensor read...");
+    // check if any new sensors appeared or disappeared:
+    scanSensors();
 
-  for (uint16_t i = 0; i < sensorsCount; i++) {
-    if (strcmp(sensorsSettings[i].address, "DHTtemp") == 0) {
-      if (!isnan(temperature)) {
-        sensorsSettings[i].lastValue = temperature;
-        sensorsSettings[i].lastUpdate = millis();
-        sensorsSettings[i].present = true;
-        sensorsSettings[i].type = SENSOR_TEMPERATURE;
-        Serial.printf("    DHT temperature: %s%s.", String(temperature), sensorUnits[SENSOR_TEMPERATURE]);
-        Serial.println();
-      } else {
-        Serial.println("Failed to read temperature from DHT sensor!");
-      }
-    }
-    if (strcmp(sensorsSettings[i].address, "DHThumi") == 0) {
-      if (!isnan(humidity)) {
-        sensorsSettings[i].lastValue = humidity;
-        sensorsSettings[i].lastUpdate = millis();
-        sensorsSettings[i].present = true;
-        sensorsSettings[i].type = SENSOR_HUMIDITY;
-        Serial.printf("    DHT humidity: %s%s.", String(humidity), sensorUnits[SENSOR_HUMIDITY]);
-        Serial.println();
-      } else {
-        Serial.println("Failed to read humidity from DHT sensor!");
-      }
-    }
-    if (strcmp(sensorsSettings[i].address, "DHTabsHumi") == 0) {
-      if (!isnan(absoluteHumidity)) {
-        sensorsSettings[i].lastValue = absoluteHumidity;
-        sensorsSettings[i].lastUpdate = millis();
-        sensorsSettings[i].present = true;
-        sensorsSettings[i].type = SENSOR_ABSOLUTE_HUMIDITY;
-        Serial.printf("    DHT absolute humidity: %s%s.", String(absoluteHumidity), sensorUnits[SENSOR_ABSOLUTE_HUMIDITY]);
-        Serial.println();
-      } else {
-        Serial.println("Failed to read absolute humidity from DHT sensor!");
-      }
-    }
+    // read values from sensors and update lastValue/lastUpdate:
+    dht_update();
+    ds18b20_update();
+    ccs811_update();
+
+    // 3. Po wykonaniu odczytu:
+    lastScanTime = millis();                // Resetujemy czas bazowy
+    currentWaitInterval = SCAN_INTERVAL_MS; // Przywracamy domyślną minutę
+
+    Serial.println("Scan finished. Next regular scan in 60s.");
+    mqttPublishChangedSensors();
   }
 }
 
-float calculateAbsoluteHumidity(float temperatureC, float relativeHumidity) {
-  return (6.112 * exp((17.67 * temperatureC) / (temperatureC + 243.5)) * relativeHumidity * 2.1674) / (273.15 + temperatureC);
-};
+bool registerSensor(const char *address, const char *defaultName, SensorType type) {
+  int16_t idx = findSensorByAddress(address);
 
-void updateDS18B20Values() {
-  sensors.requestTemperatures();
-  uint8_t deviceCount = sensors.getDeviceCount();
-
-  DeviceAddress addr;
-  char addrStr[17];
-
-  for (uint8_t i = 0; i < deviceCount; i++) {
-    if (!sensors.getAddress(addr, i))
-      continue;
-
-    for (uint8_t j = 0; j < 8; j++)
-      sprintf(&addrStr[j * 2], "%02X", addr[j]);
-    addrStr[16] = '\0';
-    int16_t idx = findSensorByAddress(addrStr);
-    if (idx < 0) {
-      Serial.println("-- sensor " + (String)addrStr + " nie w configu.");
-      continue; // sensor nie w configu
-    }
-
-    float temp = sensors.getTempC(addr);
-
-    if (temp == DEVICE_DISCONNECTED_C) {
-      Serial.println(
-          "-- Skipping disconnected (?) sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name + "] = " + (String)temp);
-      continue;
-    }
-
-    sensorsSettings[idx].lastValue = temp;
-    sensorsSettings[idx].lastUpdate = millis();
+  // exists
+  if (idx != -1) {
+    sensorsSettings[idx].type = type; // update type if we haven't set it already (i.e. when we have just loaded config.json)
     sensorsSettings[idx].present = true;
-    sensorsSettings[idx].type = SENSOR_TEMPERATURE;
-
-    Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name +
-                   "] = " + (String)sensorsSettings[idx].lastValue + sensorUnits[SENSOR_TEMPERATURE] + ".");
-  }
-  Serial.println("   =" + String(deviceCount) + " DS18B20 sensor(s) requested.");
-}
-
-bool scanSensors() {
-  DeviceAddress addr;
-  bool configChanged = false;
-
-  // reset present flags
-  for (uint16_t i = 0; i < sensorsCount; i++) {
-    sensorsSettings[i].present = false;
+    return false;
   }
 
-  sensors.begin();
-  delay(50); // mały czas dla OneWire
+  // new sensor
+  if (sensorsCount < MAX_SENSORS) {
+    strlcpy(sensorsSettings[sensorsCount].address, address, sizeof(sensorsSettings[sensorsCount].address));
+    strlcpy(sensorsSettings[sensorsCount].name, defaultName, sizeof(sensorsSettings[sensorsCount].name));
+    sensorsSettings[sensorsCount].type = type;
+    sensorsSettings[sensorsCount].compensation = 0.0f;
+    sensorsSettings[sensorsCount].present = true;
 
-  uint8_t found = sensors.getDeviceCount();
-  Serial.printf("   scanSensors: %u sensors found on OneWire", found);
-  Serial.println();
-
-  for (uint8_t i = 0; i < found; i++) {
-    if (!sensors.getAddress(addr, i)) {
-      Serial.printf("Failed to get address for sensor %u", i);
-      Serial.println();
-      continue;
-    }
-
-    char addrStr[17];
-    for (uint8_t j = 0; j < 8; j++) {
-      sprintf(&addrStr[j * 2], "%02X", addr[j]);
-    }
-    addrStr[16] = '\0';
-
-    int16_t idx = findSensorByAddress(addrStr);
-    if (idx >= 0) {
-      sensorsSettings[idx].present = true;
-      // Serial.printf("    Sensor present: %s", addrStr);
-      // Serial.println();
-    } else if (sensorsCount < MAX_SENSORS) {
-      strlcpy(sensorsSettings[sensorsCount].address, addrStr, sizeof(sensorsSettings[sensorsCount].address));
-      snprintf(sensorsSettings[sensorsCount].name, sizeof(sensorsSettings[sensorsCount].name), "Sensor %u", sensorsCount + 1);
-      sensorsSettings[sensorsCount].compensation = 0.0f;
-      sensorsSettings[sensorsCount].present = true;
-      sensorsSettings[sensorsCount].type = SENSOR_TEMPERATURE;
-
-      Serial.printf("New sensor added: %s", addrStr);
-      Serial.println();
-      sensorsCount++;
-      configChanged = true;
-    } else {
-      Serial.println("Warning: MAX_SENSORS reached. Skipping sensor.");
-    }
+    Serial.printf("New sensor registered: %s (%s)\n", defaultName, address);
+    sensorsCount++;
+    return true;
   }
 
-  // ensure if DHT sensors are in the array
-  const char *dhtAddresses[] = {"DHTtemp", "DHThumi", "DHTabsHumi"};
-  const char *dhtNames[] = {"Temperatura DHT", "DHThumi", "DHT Abs Humidity"};
-  for (uint8_t i = 0; i < sizeof(dhtAddresses) / sizeof(dhtAddresses[0]); i++) {
-    if (findSensorByAddress(dhtAddresses[i]) < 0) {
-      if (sensorsCount < MAX_SENSORS) {
-        strlcpy(sensorsSettings[sensorsCount].address, dhtAddresses[i], sizeof(sensorsSettings[sensorsCount].address));
-        strlcpy(sensorsSettings[sensorsCount].name, dhtNames[i], sizeof(sensorsSettings[sensorsCount].name));
-        sensorsSettings[sensorsCount].compensation = 0.0f;
-        sensorsSettings[sensorsCount].present = true; // DHT zawsze obecny
-        sensorsCount++;
-        configChanged = true;
-        Serial.printf("Added DHT sensor: %s", dhtAddresses[i]);
-        Serial.println();
-      } else {
-        Serial.println("Warning: MAX_SENSORS reached. Cannot add DHT sensor.");
-      }
-    } else {
-      // if already existed, just mark as present
-      sensorsSettings[findSensorByAddress(dhtAddresses[i])].present = true;
-    }
-  }
-
-  if (configChanged) {
-    saveConfig();
-    publishAllHADiscovery();
-  }
-
-  return true;
-}
-
-String formatAddressAsHex(DeviceAddress deviceAddress) {
-  String address = "";
-  uint8_t oneByte;
-  char hexChars[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-  for (uint8_t i = 0; i < 8; i++) {
-    oneByte = deviceAddress[i];
-    address += hexChars[(oneByte & 0xF0) >> 4];
-    address += hexChars[oneByte & 0x0F];
-  }
-  return address;
+  Serial.println("Warning: MAX_SENSORS reached!");
+  return false;
 }
 
 int16_t findSensorByAddress(const char *addr) {
@@ -304,6 +155,6 @@ String getSensorUnits(const SensorConfig &s) {
 }
 
 String trimmed(String s) {
-    s.trim();
-    return s;
+  s.trim();
+  return s;
 }
