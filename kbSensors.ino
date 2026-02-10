@@ -2,14 +2,13 @@
 const char programName[] = "kbSensors station.";
 const char deviceName[] = "kbSensors";
 
-const char programVersion[] = "0.20260202_k05";
+const char programVersion[] = "0.20260210_k06";
 
-const char programManual[] =
-    "// tiny monitor station for one DHT11 and many DS18B20 sensors\r\n"
-    "// outputs data at http://kbsensors/ , http://kbsensors/xml , "
-    "http://kbsensors/txt\r\n"
-    "// https is not available for now. Optional ?refresh=[seconds] for html "
-    "output.";
+const char programManual[] = "// tiny monitor station for one DHT11 and many DS18B20 sensors\r\n"
+                             "// outputs data at http://kbsensors/ , http://kbsensors/xml , "
+                             "http://kbsensors/txt\r\n"
+                             "// https is not available for now. Optional ?refresh=[seconds] for html "
+                             "output.";
 
 /******************************************************************************
  *                                                                            *
@@ -24,9 +23,6 @@ const char programManual[] =
 
 // comment the following line to disable OTA updates
 #define OTA_ENABLED
-
-
-
 
 /*
    updates over the air
@@ -52,7 +48,6 @@ String wifiSSID = "";
 String wifiPassword = "";
 String webUser = "admin";
 String webPass = "admin";
-
 
 /******************************************************************************
  *                                                                            *
