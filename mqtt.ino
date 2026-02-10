@@ -1,6 +1,3 @@
-
-#define MQTT_MAX_PACKET_SIZE 1024 // redefined (will trigger warning)
-
 #include <PubSubClient.h>
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -21,11 +18,13 @@ String mqttDeviceId;
 WiFiClient wifiClient;
 
 unsigned long lastMqttReconnectAttempt = 0;
+bool haDiscoverySent = false;
 
 void initMQTT() {
   mqttDeviceId = "kbsensors_" + String(ESP.getChipId(), HEX);
 
   mqttClient.setServer(mqtt.host.c_str(), mqtt.port);
+  mqttClient.setBufferSize(1024);
 
   Serial.print(F("[MQTT] Device ID: "));
   Serial.println(mqttDeviceId);
@@ -57,7 +56,7 @@ bool mqttConnect() {
   if (ok) {
     Serial.println(F("OK"));
     mqttPublishStatus("online");
-    publishAllHADiscovery();
+    // publishAllHADiscovery(); // nie, bo za pierwszym razem jeszcze nie ma wszystkiego.
   } else {
     Serial.print(F("FAILED rc="));
     Serial.println(mqttClient.state());
@@ -84,12 +83,23 @@ void mqttLoop() {
     return;
 
   if (!mqttClient.connected()) {
+    haDiscoverySent = false; // Resetujemy flagę przy rozłączeniu
     unsigned long now = millis();
     if (now - lastMqttReconnectAttempt > 5000) {
       lastMqttReconnectAttempt = now;
-      mqttConnect();
+      if (mqttConnect()) {
+        // Opcja A: wysyłamy od razu po udanym connect
+        publishAllHADiscovery();
+        haDiscoverySent = true;
+      }
     }
     return;
+  }
+
+  // Opcja B: wysyłamy tutaj, jeśli połączenie jest, a flaga jeszcze nie puszczona
+  if (!haDiscoverySent) {
+    publishAllHADiscovery();
+    haDiscoverySent = true;
   }
 
   mqttClient.loop();
@@ -194,22 +204,18 @@ void mqttPublishSensor(const SensorConfig &s) {
 
   const char *typeStr = "unknown";
   const char *unitStr = "";
-  if (s.type < sizeof(sensorTypeStrs) / sizeof(sensorTypeStrs[0])) {
-    typeStr = sensorTypeStrs[s.type];
-    unitStr = sensorUnits[s.type];
-  }
 
-  String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + String(typeStr) + "/" + s.address;
+  String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + getSensorType(s) + "/" + s.address;
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   doc["address"] = s.address;
   doc["name"] = s.name;
-  doc["valueType"] = s.valueType;
+  doc["valueType"] = getSensorType(s);
   doc["value"] = correctedValue;
-  doc["unit"] = unitStr;
+  doc["unit"] = trimmed(getSensorUnits(s));
   doc["lastUpdate"] = s.lastUpdate;
 
-  char payload[256];
+  char payload[384];
   size_t n = serializeJson(doc, payload, sizeof(payload));
 
   mqttClient.publish(topic.c_str(), payload, mqtt.retain);
@@ -222,38 +228,28 @@ void mqttPublishHADiscovery(const SensorConfig &s) {
   if (!mqttClient.connected())
     return;
 
-  const char *typeStr = sensorTypeStrs[s.type];
-  const char *unitStr = sensorUnits[s.type];
+  String typeStr = getSensorType(s);
+  String unitStr = trimmed(getSensorUnits(s));
 
   // HA component (na razie wszystko jako sensor)
   const char *component = "sensor";
 
   String uniqueId = mqttDeviceId + "_" + typeStr + "_" + s.address;
-
   String discoveryTopic = "homeassistant/" + String(component) + "/" + uniqueId + "/config";
-
   String stateTopic = mqtt.baseTopic + "/" + mqttDeviceId + "/sensor/" + typeStr + "/" + s.address;
 
-  StaticJsonDocument<512> doc;
+  DynamicJsonDocument doc(1024);
 
-  doc["name"] = String(s.name) + " " + typeStr;
+  doc["name"] = String(s.name);
   doc["unique_id"] = uniqueId;
   doc["state_topic"] = stateTopic;
+  doc["device_class"] = typeStr;
   doc["unit_of_measurement"] = unitStr;
   doc["value_template"] = "{{ value_json.value }}";
   doc["availability_topic"] = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
+  doc["availability_template"] = "{{ value_json.state }}";
   doc["payload_available"] = "online";
   doc["payload_not_available"] = "offline";
-
-  // device_class (tylko jeśli znany)
-  if (strcmp(typeStr, "temperature") == 0)
-    doc["device_class"] = "temperature";
-  else if (strcmp(typeStr, "humidity") == 0)
-    doc["device_class"] = "humidity";
-  else if (strcmp(typeStr, "eco2") == 0)
-    doc["device_class"] = "carbon_dioxide";
-  else if (strcmp(typeStr, "tvoc") == 0)
-    doc["device_class"] = "volatile_organic_compounds";
 
   // wspólne urządzenie
   JsonObject device = doc.createNestedObject("device");
@@ -262,11 +258,15 @@ void mqttPublishHADiscovery(const SensorConfig &s) {
   device["model"] = "kbSensors";
   device["manufacturer"] = "Kamil Baranski";
 
-  char payload[512];
+  char payload[1024];
   serializeJson(doc, payload, sizeof(payload));
 
-  mqttClient.publish(discoveryTopic.c_str(), payload, true);
-  Serial.println(F("[MQTT] HA discovery published."));
+  // debug
+  // Serial.println("[MQTT] DEBUG Discovery Payload:");
+  // Serial.println(payload); // Zobacz, czy JSON nie jest ucięty
+  bool result = mqttClient.publish(discoveryTopic.c_str(), payload, true);
+  Serial.printf("[MQTT] %s HA discovery publish result: %s", s.address, result ? "OK" : "FAILED (Check Buffer Size)");
+  Serial.println();
 }
 
 void publishAllHADiscovery() {
