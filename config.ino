@@ -11,7 +11,6 @@ static bool fsOK;
 
 #include <ArduinoJson.h>
 
-
 bool loadConfig() {
   if (!LittleFS.exists(CONFIG_FILE)) {
     Serial.println("Config not found");

@@ -17,13 +17,12 @@ void initWiFi() {
   }
 }
 
-
 // --- AP mode start ---
 void startAPMode() {
   Serial.println("Starting AP mode...");
   String apSSID = "kbSensors-" + String((uint32_t)(ESP.getChipId() & 0xFFFF), HEX);
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(apSSID.c_str(), "12345678");  // default password
+  WiFi.softAP(apSSID.c_str(), "12345678"); // default password
   Serial.println("AP started: " + (String)apSSID);
 }
 
@@ -56,13 +55,7 @@ bool startSTAMode() {
   }
 }
 
-void initNetbiosName() {
-  NBNS.begin(NETBIOSNAME);
-}
-
-
-
-
+void initNetbiosName() { NBNS.begin(NETBIOSNAME); }
 
 bool loadWiFiConfig() {
   if (!LittleFS.begin()) {
