@@ -82,7 +82,6 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_TEMPERATURE;
-        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_TEMPERATURE]);
         Serial.printf("    DHT temperature: %s%s.", String(temperature), sensorUnits[SENSOR_TEMPERATURE]);
         Serial.println();
       } else {
@@ -95,7 +94,6 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_HUMIDITY;
-        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_HUMIDITY]);
         Serial.printf("    DHT humidity: %s%s.", String(humidity), sensorUnits[SENSOR_HUMIDITY]);
         Serial.println();
       } else {
@@ -108,7 +106,6 @@ void updateDHTValues() {
         sensorsSettings[i].lastUpdate = millis();
         sensorsSettings[i].present = true;
         sensorsSettings[i].type = SENSOR_ABSOLUTE_HUMIDITY;
-        strcpy(sensorsSettings[i].valueType, sensorUnits[SENSOR_ABSOLUTE_HUMIDITY]);
         Serial.printf("    DHT absolute humidity: %s%s.", String(absoluteHumidity), sensorUnits[SENSOR_ABSOLUTE_HUMIDITY]);
         Serial.println();
       } else {
@@ -154,7 +151,6 @@ void updateDS18B20Values() {
     sensorsSettings[idx].lastUpdate = millis();
     sensorsSettings[idx].present = true;
     sensorsSettings[idx].type = SENSOR_TEMPERATURE;
-    strcpy(sensorsSettings[idx].valueType, sensorUnits[SENSOR_TEMPERATURE]);
 
     Serial.println("    sensor_" + (String)addrStr + " [" + (String)sensorsSettings[idx].name +
                    "] = " + (String)sensorsSettings[idx].lastValue + sensorUnits[SENSOR_TEMPERATURE] + ".");
@@ -291,4 +287,23 @@ bool hexStringToAddress(const char *hexString, uint8_t *addr) {
     addr[i] = (h << 4) | l;
   }
   return true;
+}
+
+String getSensorType(const SensorConfig &s) {
+  if (s.type < sizeof(sensorTypeStrs) / sizeof(sensorTypeStrs[0])) {
+    return sensorTypeStrs[s.type];
+  }
+  return sensorTypeStrs[SENSOR_UNKNOWN];
+}
+
+String getSensorUnits(const SensorConfig &s) {
+  if (s.type < sizeof(sensorUnits) / sizeof(sensorUnits[0])) {
+    return sensorUnits[s.type];
+  }
+  return sensorUnits[SENSOR_UNKNOWN];
+}
+
+String trimmed(String s) {
+    s.trim();
+    return s;
 }
