@@ -1,40 +1,33 @@
 #include "dht11.h"
 
-bool dht_scan() {
+bool dht11_init() {
   if (DHT.read11(DHT11_PIN) != DHTLIB_OK) {
     Serial.println("DHT11 not found.");
     return false;
   }
-
-  bool changed = false;
-  changed |= registerSensor("DHTtemp", "DHT Temperature", SENSOR_TEMPERATURE);
-  changed |= registerSensor("DHThumi", "DHT Humidity", SENSOR_HUMIDITY);
-  changed |= registerSensor("DHTabsHumi", "DHT Abs Humidity", SENSOR_ABSOLUTE_HUMIDITY);
-  return changed;
+  return true;
 }
 
-void dht_update() {
+bool dht11_update() {
   if (DHT.read11(DHT11_PIN) != DHTLIB_OK) {
-    Serial.println("DHT read error!");
-    return;
+    return false;
   }
 
   float t = DHT.getTemperature();
   float h = DHT.getHumidity();
-  float ah = (!isnan(t) && !isnan(h)) ? calculateAbsoluteHumidity(t, h) : NAN;
 
-  for (uint16_t i = 0; i < sensorsCount; i++) {
-    if (strcmp(sensorsSettings[i].address, "DHTtemp") == 0 && !isnan(t)) {
-      sensorsSettings[i].lastValue = t;
-      sensorsSettings[i].lastUpdate = millis();
-    } else if (strcmp(sensorsSettings[i].address, "DHThumi") == 0 && !isnan(h)) {
-      sensorsSettings[i].lastValue = h;
-      sensorsSettings[i].lastUpdate = millis();
-    } else if (strcmp(sensorsSettings[i].address, "DHTabsHumi") == 0 && !isnan(ah)) {
-      sensorsSettings[i].lastValue = ah;
-      sensorsSettings[i].lastUpdate = millis();
-    }
+  // DHT Temperature
+  submitSensorReading("DHTtemp", t, SENSOR_TEMPERATURE, "DHT Temperature");
+
+  // DHT Humidity
+  submitSensorReading("DHThumi", h, SENSOR_HUMIDITY, "DHT Humidity");
+
+  // DHT Absolute Humidity
+  if (!isnan(t) && !isnan(h)) {
+    float ah = calculateAbsoluteHumidity(t, h);
+    submitSensorReading("DHTabsHumi", ah, SENSOR_ABSOLUTE_HUMIDITY, "DHT Abs Humidity");
   }
+  return true;
 }
 
 float calculateAbsoluteHumidity(float temperatureC, float relativeHumidity) {

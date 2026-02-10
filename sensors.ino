@@ -4,29 +4,41 @@ const unsigned long SCAN_INTERVAL_MS = 60000; // 60 seconds
 // the sensors are slow; you can read them not more often than 1s.
 const unsigned long FLOOD_GUARD_MS = 1000; // 1 second
 
-void initSensors() {
-  // Reconfiguring I2C bus to avoid Flash pin conflicts
-  Wire.begin(I2C_SDA, I2C_SCL);
+bool sensorAdded;
 
+void initSensors() {
+  bool sensorAdded = false;
+
+  ds18b20_init();
+  dht11_init();
+  ccs811_init();
+
+  if (sensorAdded) {
+    saveConfig();
+    publishAllHADiscovery();
+  }
   scanSensors();
+
   registerForceUpdate(0);
 }
 
-bool scanSensors() {
+void scanSensors() {
   // reset present flags
   for (uint16_t i = 0; i < sensorsCount; i++) {
     sensorsSettings[i].present = false;
   }
 
-  // Wykorzystujemy bitowy OR (|), aby każda funkcja się wykonała
-  bool changed = ds18b20_scan() | dht_scan() | ccs811_scan();
+  bool sensorAdded = false;
 
-  if (changed) {
+  // Wykorzystujemy bitowy OR (|), aby każda funkcja się wykonała
+  ds18b20_update();
+  dht11_update();
+  ccs811_update();
+
+  if (sensorAdded) { // new sensor
     saveConfig();
     publishAllHADiscovery();
   }
-
-  return changed;
 }
 
 void registerForceUpdate(int intervalSeconds) {
@@ -58,13 +70,9 @@ void handleSensors() {
   // 2. Sprawdzamy, czy upłynął zaplanowany czas (zwykły lub wymuszony)
   if (now - lastScanTime >= currentWaitInterval) {
     Serial.println("Executing sensor read...");
-    // check if any new sensors appeared or disappeared:
-    scanSensors();
 
-    // read values from sensors and update lastValue/lastUpdate:
-    dht_update();
-    ds18b20_update();
-    ccs811_update();
+    // check if any new sensors appeared or disappeared and update their values
+    scanSensors();
 
     // 3. Po wykonaniu odczytu:
     lastScanTime = millis();                // Resetujemy czas bazowy
@@ -75,31 +83,59 @@ void handleSensors() {
   }
 }
 
-bool registerSensor(const char *address, const char *defaultName, SensorType type) {
+/**
+ * Główna funkcja przyjmująca odczyt z dowolnego czujnika.
+ * Realizuje logikę "Upsert":
+ * 1. Szuka sensora po adresie.
+ * 2. Jeśli nie ma - rejestruje go.
+ * 3. Aplikuje kompensację.
+ * 4. Aktualizuje wartość i czas.
+ */
+bool submitSensorReading(const char *address, float rawValue, SensorType type, const char *defaultName) {
+  // 1. Walidacja
+  if (isnan(rawValue))
+    return false;
+
   int16_t idx = findSensorByAddress(address);
 
-  // exists
-  if (idx != -1) {
-    sensorsSettings[idx].type = type; // update type if we haven't set it already (i.e. when we have just loaded config.json)
-    sensorsSettings[idx].present = true;
-    return false;
+  // 2. Jeśli nie znaleziono - próbujemy dodać (Auto-Discovery)
+  if (idx == -1) {
+    if (sensorsCount < MAX_SENSORS) {
+      idx = sensorsCount; // Nowy indeks
+      strlcpy(sensorsSettings[idx].address, address, sizeof(sensorsSettings[idx].address));
+      strlcpy(sensorsSettings[idx].name, defaultName, sizeof(sensorsSettings[idx].name));
+      sensorsSettings[idx].compensation = 0.0f;
+      sensorsSettings[idx].type = type; // Ustawiamy typ przy pierwszym znalezieniu
+      sensorsCount++;
+
+      Serial.printf("New sensor detected and added: %s (%s)\n", defaultName, address);
+      sensorAdded = true; // global flag to indicate a new sensor was added
+    } else {
+      Serial.println("Warning: MAX_SENSORS reached. Cannot add new sensor.");
+      return false;
+    }
   }
 
-  // new sensor
-  if (sensorsCount < MAX_SENSORS) {
-    strlcpy(sensorsSettings[sensorsCount].address, address, sizeof(sensorsSettings[sensorsCount].address));
-    strlcpy(sensorsSettings[sensorsCount].name, defaultName, sizeof(sensorsSettings[sensorsCount].name));
-    sensorsSettings[sensorsCount].type = type;
-    sensorsSettings[sensorsCount].compensation = 0.0f;
-    sensorsSettings[sensorsCount].present = true;
-
-    Serial.printf("New sensor registered: %s (%s)\n", defaultName, address);
-    sensorsCount++;
-    return true;
+  // 3. Aktualizacja danych (dla istniejącego lub właśnie dodanego)
+  // Upewniamy się, że typ jest aktualny (na wypadek gdybyś zmienił definicję w kodzie)
+  if (sensorsSettings[idx].type == SENSOR_UNKNOWN) {
+    sensorsSettings[idx].type = type;
   }
 
-  Serial.println("Warning: MAX_SENSORS reached!");
-  return false;
+  // we add compensation later in the pipeline, so we store raw value here
+  sensorsSettings[idx].lastValue = rawValue;
+  sensorsSettings[idx].lastUpdate = millis();
+  sensorsSettings[idx].present = true;
+
+  // 4. Wspólne logowanie
+  Serial.printf("    %s [%s]: raw %.2f%s; comp %.2f%s\n",
+      sensorsSettings[idx].address,
+      sensorsSettings[idx].name,
+      rawValue,
+      getSensorUnits(sensorsSettings[idx]).c_str(),
+      rawValue + sensorsSettings[idx].compensation,
+      getSensorUnits(sensorsSettings[idx]).c_str());
+  return true;
 }
 
 int16_t findSensorByAddress(const char *addr) {
@@ -108,36 +144,6 @@ int16_t findSensorByAddress(const char *addr) {
       return i;
   }
   return -1;
-}
-
-// Zamienia 16-znakowy string HEX na tablicę 8 bajtów
-bool hexStringToAddress(const char *hexString, uint8_t *addr) {
-  if (strlen(hexString) != 16)
-    return false; // walidacja długości
-
-  for (uint8_t i = 0; i < 8; i++) {
-    char high = hexString[i * 2];
-    char low = hexString[i * 2 + 1];
-
-    auto hexToNibble = [](char c) -> int {
-      if (c >= '0' && c <= '9')
-        return c - '0';
-      if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-      if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-      return -1; // invalid char
-    };
-
-    int h = hexToNibble(high);
-    int l = hexToNibble(low);
-
-    if (h == -1 || l == -1)
-      return false; // niepoprawny znak HEX
-
-    addr[i] = (h << 4) | l;
-  }
-  return true;
 }
 
 String getSensorType(const SensorConfig &s) {

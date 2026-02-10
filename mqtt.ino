@@ -66,16 +66,25 @@ bool mqttConnect() {
 }
 
 void mqttPublishStatus(const char *state) {
-  if (!mqtt.enabled)
-    return;
-  if (!mqttClient.connected())
+  if (!mqtt.enabled || !mqttClient.connected())
     return;
 
-  String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
+  char topic[64];
+  snprintf(topic, sizeof(topic), "%s/%s/status", mqtt.baseTopic.c_str(), mqttDeviceId.c_str());
 
-  String payload = String("{\"state\":\"") + state + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"uptime\":" + millis() / 1000 + "}";
+  StaticJsonDocument<384> doc;
 
-  mqttClient.publish(topic.c_str(), payload.c_str(), mqtt.retain);
+  doc["state"] = state;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["uptime"] = millis() / 1000;
+  doc["freeHeap"] = ESP.getFreeHeap();
+
+  // 3. Serializacja do bufora
+  char buffer[384];
+  size_t n = serializeJson(doc, buffer);
+
+  // 4. Wysyłka
+  mqttClient.publish(topic, buffer, n, mqtt.retain);
 }
 
 void mqttLoop() {
