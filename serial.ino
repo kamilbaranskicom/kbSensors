@@ -58,10 +58,14 @@ void processSerialCommand(const char *line) {
   char cmd[SERIAL_BUF_SIZE];
   int arg = 0;
   int scanned = sscanf(line, "%s %d", cmd, &arg);
+  Serial.println();
 
   if (strcmp(cmd, "r") == 0) {
     Serial.printf("Registering forced sensor update, interval=%d\r\n", arg);
     registerForceUpdate(arg); // interval w sekundach
+  } else if (strcmp(cmd, "i") == 0) {
+    Serial.printf("Registering forced import update, interval=%d\r\n", arg);
+    registerForceImportUpdate(arg); // interval w sekundach
   } else if (strcmp(cmd, "s") == 0) {
     Serial.println(F("Sensors status:"));
     for (int i = 0; i < MAX_SENSORS; i++) {
@@ -78,9 +82,15 @@ void processSerialCommand(const char *line) {
   } else if (strcmp(cmd, "m") == 0) {
     Serial.print(F("MQTT connected: "));
     Serial.println(mqttClient.connected() ? "YES" : "NO");
+  } else if (strcmp(cmd, "e") == 0) {
+    Serial.println(F("Enviromental data:"));
+    Serial.printf("Temperature: %.2fC (upd: %d)\r\n", globalEnv.temperature, globalEnv.lastTempUpdate);
+    Serial.printf("Humidity: %.2f%% (upd: %d)\r\n", globalEnv.humidity, globalEnv.lastHumiUpdate);
   } else if (strcmp(cmd, "help") == 0) {
     Serial.println(F("Available commands:"));
     Serial.println(F("  r [interval] - register forced sensor update with given interval in seconds"));
+    Serial.println(F("  i [interval] - register forced import update with given interval in seconds"));
+    Serial.println(F("  e - show enviromental data"));
     Serial.println(F("  s - show sensors status"));
     Serial.println(F("  mpd - publish MQTT discovery for all sensors"));
     Serial.println(F("  mps - publish MQTT values for all sensors"));
