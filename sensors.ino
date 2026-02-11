@@ -108,7 +108,7 @@ bool submitSensorReading(const char *address, float rawValue, SensorType type, c
       sensorsSettings[idx].type = type; // Ustawiamy typ przy pierwszym znalezieniu
       sensorsCount++;
 
-      Serial.printf("New sensor detected and added: %s (%s)\n", defaultName, address);
+      Serial.printf("New sensor detected and added: %s (%s)\r\n", defaultName, address);
       sensorAdded = true; // global flag to indicate a new sensor was added
     } else {
       Serial.println("Warning: MAX_SENSORS reached. Cannot add new sensor.");
@@ -128,7 +128,7 @@ bool submitSensorReading(const char *address, float rawValue, SensorType type, c
   sensorsSettings[idx].present = true;
 
   // 4. Wspólne logowanie
-  Serial.printf("    %s [%s]: raw %.2f%s; comp %.2f%s\n",
+  Serial.printf("    %s [%s]: raw %.2f%s; comp %.2f%s\r\n",
       sensorsSettings[idx].address,
       sensorsSettings[idx].name,
       rawValue,
