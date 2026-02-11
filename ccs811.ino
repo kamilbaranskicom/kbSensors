@@ -34,7 +34,26 @@ bool ccs811_update() {
     return false;
   }
 
-  submitSensorReading("CCS811eCO2", ccs.geteCO2(), SENSOR_ECO2_PPM, "eCO2");
-  submitSensorReading("CCS811TVOC", ccs.getTVOC(), SENSOR_TVOC_PPB, "TVOC");
+  // 1. Logika Kompensacji
+  float t = 25.0;
+  float h = 50.0;
+
+  // Używamy danych z importu, jeśli są świeże (np. max 10 minut)
+  unsigned long now = millis();
+  if (now - globalEnv.lastTempUpdate < 600000)
+    t = globalEnv.temperature;
+  if (now - globalEnv.lastHumiUpdate < 600000)
+    h = globalEnv.humidity;
+
+  // Aplikujemy do sensora
+  ccs.setEnvironmentalData(h, t);
+
+  float eco2 = ccs.geteCO2();
+  float tvoc = ccs.getTVOC();
+
+  submitSensorReading("CCS811eCO2", eco2, SENSOR_ECO2_PPM, "eCO2");
+  submitSensorReading("CCS811TVOC", tvoc, SENSOR_TVOC_PPB, "TVOC");
+
+  Serial.printf("CCS811 read (comp: %.1fC %.1f%%): eCO2=%.0f TVOC=%.0f\r\n", t, h, eco2, tvoc);
   return true;
 }
