@@ -84,7 +84,7 @@ void mqttPublishStatus(const char *state) {
   size_t n = serializeJson(doc, buffer);
 
   // 4. Wysyłka
-  mqttClient.publish(topic, buffer, n, mqtt.retain);
+  mqttClient.publish(topic, (const uint8_t *)buffer, n, mqtt.retain);
 }
 
 void mqttLoop() {
