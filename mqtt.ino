@@ -24,12 +24,16 @@ void initMQTT() {
   mqttDeviceId = "kbsensors_" + String(ESP.getChipId(), HEX);
 
   mqttClient.setServer(mqtt.host.c_str(), mqtt.port);
+  mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(1024);
 
   Serial.print(F("[MQTT] Device ID: "));
   Serial.println(mqttDeviceId);
-  Serial.printf("(MQTT_MAX_PACKET_SIZE=%d)", MQTT_MAX_PACKET_SIZE);
-  Serial.println();
+}
+
+void mqttCallback(char *topic, byte *payload, unsigned int length) {
+  // Przekazujemy do imports.ino
+  processMqttImport(topic, payload, length);
 }
 
 bool mqttConnect() {
@@ -40,23 +44,32 @@ bool mqttConnect() {
 
   Serial.print(F("[MQTT] Connecting... "));
 
+  // Last Will & Testament
+  String lwtTopic = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
+  String lwtPayload = "{\"state\":\"offline\"}";
+
   bool ok;
   if (mqtt.user.length()) {
-    ok = mqttClient.connect(mqttDeviceId.c_str(),
-        mqtt.user.c_str(),
-        mqtt.pass.c_str(),
-        (mqtt.baseTopic + "/" + mqttDeviceId + "/status").c_str(),
-        mqtt.qos,
-        true,
-        "offline");
+    ok = mqttClient.connect(
+        mqttDeviceId.c_str(), mqtt.user.c_str(), mqtt.pass.c_str(), lwtTopic.c_str(), mqtt.qos, true, lwtPayload.c_str());
   } else {
-    ok = mqttClient.connect(mqttDeviceId.c_str());
+    ok = mqttClient.connect(mqttDeviceId.c_str(), lwtTopic.c_str(), mqtt.qos, true, lwtPayload.c_str());
   }
 
   if (ok) {
     Serial.println(F("OK"));
     mqttPublishStatus("online");
     // publishAllHADiscovery(); // nie, bo za pierwszym razem jeszcze nie ma wszystkiego.
+    // SUBSKRYPCJE DLA IMPORTU DANYCH
+    if (config.compTemp.method == IMPORT_MQTT_JSON && sizeof(config.compTemp.source) > 0) {
+      mqttClient.subscribe(config.compTemp.source.c_str());
+      Serial.printf("[MQTT] Subscribed to CompTemp: %s\n", config.compTemp.source);
+    }
+    if (config.compHumi.method == IMPORT_MQTT_JSON && sizeof(config.compHumi.source) > 0) {
+      mqttClient.subscribe(config.compHumi.source.c_str());
+      Serial.printf("[MQTT] Subscribed to CompHumi: %s\n", config.compHumi.source);
+    }
+
   } else {
     Serial.print(F("FAILED rc="));
     Serial.println(mqttClient.state());
