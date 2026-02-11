@@ -80,6 +80,7 @@ void loop() {
   // updateSensorsValues();
   handleWebserver();
   checkResetButton();
+  handleImports();
   handleSensors();
 
 #ifdef OTA_ENABLED
