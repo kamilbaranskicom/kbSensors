@@ -34,11 +34,11 @@ bool ccs811_update() {
     return false;
   }
 
-  // 1. Logika Kompensacji
+  // defaults
   float t = 25.0;
-  float h = 50.0;
+  float h = 40.0;
 
-  // Używamy danych z importu, jeśli są świeże (np. max 10 minut)
+  // use environment data if it's fresh (hardcoded max 10 minutes)
   unsigned long now = millis();
   if (now - globalEnv.lastTempUpdate < 600000)
     t = globalEnv.temperature;
