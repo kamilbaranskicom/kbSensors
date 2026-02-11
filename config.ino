@@ -44,11 +44,9 @@ bool loadConfig() {
       break;
 
     strlcpy(sensorsSettings[sensorsCount].address, o["address"] | "", sizeof(sensorsSettings[sensorsCount].address));
-
     strlcpy(sensorsSettings[sensorsCount].name, o["name"] | "Sensor", sizeof(sensorsSettings[sensorsCount].name));
-
     sensorsSettings[sensorsCount].compensation = o["compensation"] | 0.0f;
-
+    sensorsSettings[sensorsCount].type = (SensorType)(o["type"] | SENSOR_UNKNOWN);
     sensorsSettings[sensorsCount].present = false;
     sensorsCount++;
   }
@@ -76,6 +74,7 @@ bool saveConfig() {
     o["address"] = sensorsSettings[i].address;
     o["name"] = sensorsSettings[i].name;
     o["compensation"] = sensorsSettings[i].compensation;
+    o["type"] = (uint8_t)sensorsSettings[i].type;
   }
 
   File f = LittleFS.open(CONFIG_FILE, "w");
