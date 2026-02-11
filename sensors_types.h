@@ -55,6 +55,48 @@ uint16_t sensorsCount = 0;
 #define MAX_SENSORS 100
 SensorConfig sensorsSettings[MAX_SENSORS];
 
+/*
+ * Global environment imports
+ */
+enum ImportMethod : uint8_t {
+  //
+  IMPORT_NONE = 0,
+  IMPORT_MQTT_JSON = 1, // Nasłuchuj tematu MQTT (oczekuje JSON {"value": 12.3})
+  IMPORT_HTTP_JSON = 2  // Pobierz URL (oczekuje struktury kbSensors {"sensors": [...]})
+};
+
+// Konfiguracja pojedynczego kanału importu (np. dla Temperatury)
+struct EnvCompensationConfig {
+  ImportMethod method;
+  String source;       // URL (http://192...) lub Temat MQTT (kbSensors/ID/...)
+  char address[17];    // Adres sensora w JSON (np. "28D8BE..." lub "DHTtemp")
+  float fallbackValue; // Wartość domyślna, gdy brak odczytu
+};
+
+// Struktura trzymająca globalne warunki środowiskowe dla kompensacji
+struct GlobalEnvironment {
+  float temperature;
+  float humidity;
+  unsigned long lastTempUpdate;
+  unsigned long lastHumiUpdate;
+};
+
+GlobalEnvironment globalEnv = {
+    //
+    25.0f,
+    50.0f,
+    0,
+    0};
+
+// Dodajemy to do głównego Configu (deklaracja w sensors_types.h, instancja w kbSensors.ino)
+struct AppConfig {
+  // ... istniejące pola ...
+  EnvCompensationConfig compTemp;
+  EnvCompensationConfig compHumi;
+};
+
+AppConfig config;
+
 // forward definitions:
 String getSensorType(const SensorConfig &s);
 String getSensorUnits(const SensorConfig &s);
