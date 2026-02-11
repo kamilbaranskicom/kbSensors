@@ -552,12 +552,12 @@ void handleMQTTPage() {
       "<legend> Kompensacja srodowiskowa (dla CCS811)</legend>"
 
       "<h4>Temperatura</h4><select id='remTempMethod' name='remTempMethod' onchange='toggleRemoteInputs()'><option value='0'>Brak</option>"
-      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option></select>"
+      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option><option value='3'>Lokalny Sensor</option></select>"
       "<input type='text' id='remTempSource' name='remTempSource' placeholder='URL lub Temat MQTT'>"
       "<input type='text' id='remTempParam' name='remTempParam' placeholder='Adres sensora (dla JSON)'><br />"
 
       "<h4>Wilgotnosc</h4><select id='remHumiMethod' name='remHumiMethod' onchange='toggleRemoteInputs()'><option value='0'>Brak</option>"
-      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option></select>"
+      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option><option value='3'>Lokalny Sensor</option></select>"
       "<input type='text' id='remHumiSource' name='remHumiSource' placeholder='URL lub Temat MQTT'>"
       "<input type='text' id='remHumiParam'  name='remHumiParam' placeholder='Adres sensora (dla JSON)'></fieldset> ";
   html += "<hr>";

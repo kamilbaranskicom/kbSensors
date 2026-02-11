@@ -62,7 +62,8 @@ enum ImportMethod : uint8_t {
   //
   IMPORT_NONE = 0,
   IMPORT_MQTT_JSON = 1, // Nasłuchuj tematu MQTT (oczekuje JSON {"value": 12.3})
-  IMPORT_HTTP_JSON = 2  // Pobierz URL (oczekuje struktury kbSensors {"sensors": [...]})
+  IMPORT_HTTP_JSON = 2, // Pobierz URL (oczekuje struktury kbSensors {"sensors": [...]})
+  IMPORT_LOCAL = 3      // Z tego samego urządzenia (RAM)
 };
 
 // Konfiguracja pojedynczego kanału importu (np. dla Temperatury)

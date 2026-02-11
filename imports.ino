@@ -35,6 +35,16 @@ float findValueInJson(const String &jsonPayload, const char *targetAddress) {
   return NAN;
 }
 
+// Helper do wyciągania wartości z lokalnej tablicy
+float getLocalSensorValue(const char *address) {
+  int16_t idx = findSensorByAddress(address);
+  if (idx != -1 && sensorsSettings[idx].present) {
+    // Zwracamy wartość skompensowaną (bo takiej używamy w JSON/MQTT)
+    return sensorsSettings[idx].lastValue + sensorsSettings[idx].compensation;
+  }
+  return NAN;
+}
+
 // Funkcja do pobierania HTTP (polling co np. 60s)
 void handleImports() {
   unsigned long now = millis();
@@ -46,7 +56,15 @@ void handleImports() {
   }
 
   // 1. Import Temperatury po HTTP
-  if (config.compTemp.method == IMPORT_HTTP_JSON) {
+  if (config.compTemp.method == IMPORT_LOCAL) {
+    float val = getLocalSensorValue(config.compTemp.address);
+    if (!isnan(val)) {
+      globalEnv.temperature = val;
+      globalEnv.lastTempUpdate = millis();
+      // Debug tylko przy zmianie lub rzadziej, żeby nie śmiecić
+      // Serial.printf("[Import] Local Temp: %.2f\n", val);
+    }
+  } else if (config.compTemp.method == IMPORT_HTTP_JSON) {
     Serial.println("temp JSON");
     float val = fetchHttpValue(config.compTemp.source, config.compTemp.address);
     if (!isnan(val)) {
@@ -57,7 +75,13 @@ void handleImports() {
   }
 
   // 2. Import Wilgotności po HTTP
-  if (config.compHumi.method == IMPORT_HTTP_JSON) {
+  if (config.compHumi.method == IMPORT_LOCAL) {
+    float val = getLocalSensorValue(config.compHumi.address);
+    if (!isnan(val)) {
+      globalEnv.humidity = val;
+      globalEnv.lastHumiUpdate = millis();
+    }
+  } else if (config.compHumi.method == IMPORT_HTTP_JSON) {
     Serial.println("humi JSON");
     // Jeśli URL jest ten sam co dla Temp, warto by to zoptymalizować i pobrać raz,
     // ale dla czytelności zostawmy oddzielnie (ESP sobie poradzi z 2 requestami na minutę).
