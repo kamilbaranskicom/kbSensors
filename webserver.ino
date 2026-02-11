@@ -381,7 +381,7 @@ String sendTXT() {
 
 String sendJSON() {
   StaticJsonDocument<1024> doc; // większy, bo może być dużo DS18B20
-  JsonArray dsArray = doc.createNestedArray("ds18b20");
+  JsonArray dsArray = doc.createNestedArray("sensors");
 
   for (uint16_t i = 0; i < sensorsCount; i++) {
     SensorConfig s = sensorsSettings[i];
@@ -471,6 +471,13 @@ void handleMQTTPage() {
   }
 
   if (server.method() == HTTP_POST) {
+
+    // DEBUG: Wypisz co przyszło
+    Serial.println("POST Arguments received:");
+    for (int i = 0; i < server.args(); i++) {
+      Serial.printf("Arg '%s' = '%s'\n", server.argName(i).c_str(), server.arg(i).c_str());
+    }
+
     if (server.hasArg("host"))
       mqtt.host = server.arg("host");
     if (server.hasArg("port"))
@@ -488,6 +495,22 @@ void handleMQTTPage() {
     if (server.hasArg("retain"))
       mqtt.retain = server.arg("retain") == "on";
 
+    if (server.hasArg("remTempMethod"))
+      config.compTemp.method = (ImportMethod)server.arg("remTempMethod").toInt();
+    if (server.hasArg("remTempSource"))
+      config.compTemp.source = server.arg("remTempSource");
+    if (server.hasArg("remTempParam")) {
+      strlcpy(config.compTemp.address, server.arg("remTempParam").c_str(), sizeof(config.compTemp.address));
+    }
+
+    if (server.hasArg("remHumiMethod"))
+      config.compHumi.method = (ImportMethod)server.arg("remHumiMethod").toInt();
+    if (server.hasArg("remHumiSource"))
+      config.compHumi.source = server.arg("remHumiSource");
+    if (server.hasArg("remHumiParam")) {
+      strlcpy(config.compHumi.address, server.arg("remHumiParam").c_str(), sizeof(config.compHumi.address));
+    }
+
     if (server.hasArg("reset")) {
       mqtt = MQTTConfig(); // przywróć domyślne wartości
       message = "<p>MQTT settings reset to defaults</p>";
@@ -495,6 +518,7 @@ void handleMQTTPage() {
       message = "<p>MQTT settings saved</p>";
     }
 
+    saveConfig();
     saveMQTTConfig();
     server.send(200,
         "text/html",
@@ -521,6 +545,22 @@ void handleMQTTPage() {
   html += "Enabled: <input type='checkbox' name='enabled'" + String(mqtt.enabled ? " checked" : "") + "><br>";
   html += "QoS: <input name='qos' value='" + String(mqtt.qos) + "'><br>";
   html += "Retain: <input type='checkbox' name='retain'" + String(mqtt.retain ? " checked" : "") + "><br><hr>";
+  //
+  // temporarily here as we should think about reconstructing the settings page.
+  html +=
+      "<fieldset>"
+      "<legend> Kompensacja srodowiskowa (dla CCS811)</legend>"
+
+      "<h4>Temperatura</h4><select id='remTempMethod' name='remTempMethod' onchange='toggleRemoteInputs()'><option value='0'>Brak</option>"
+      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option></select>"
+      "<input type='text' id='remTempSource' name='remTempSource' placeholder='URL lub Temat MQTT'>"
+      "<input type='text' id='remTempParam' name='remTempParam' placeholder='Adres sensora (dla JSON)'><br />"
+
+      "<h4>Wilgotnosc</h4><select id='remHumiMethod' name='remHumiMethod' onchange='toggleRemoteInputs()'><option value='0'>Brak</option>"
+      "<option value='1'>MQTT Topic</option><option value='2'>JSON URL</option></select>"
+      "<input type='text' id='remHumiSource' name='remHumiSource' placeholder='URL lub Temat MQTT'>"
+      "<input type='text' id='remHumiParam'  name='remHumiParam' placeholder='Adres sensora (dla JSON)'></fieldset> ";
+  html += "<hr>";
   html += "<input type='submit' value='Save'>";
   html += " <input type='submit' name='reset' value='Reset to defaults'>";
   html += "</form></body></html>";
