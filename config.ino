@@ -53,6 +53,17 @@ bool loadConfig() {
 
   Serial.printf("Loaded %u sensors from config", sensorsCount);
   Serial.println();
+
+  // temperature compensation for ccs811
+  config.compTemp.method = (ImportMethod)doc["compT"]["m"].as<int>();
+  config.compTemp.source = doc["compT"]["src"] | "";
+  strlcpy(config.compTemp.address, doc["compT"]["addr"] | "", sizeof(config.compTemp.address));
+
+  // humidity compensation for ccs811
+  config.compHumi.method = (ImportMethod)doc["compH"]["m"].as<int>();
+  config.compHumi.source = doc["compH"]["src"] | "";
+  strlcpy(config.compHumi.address, doc["compH"]["addr"] | "", sizeof(config.compHumi.address));
+
   return true;
 }
 
@@ -76,6 +87,16 @@ bool saveConfig() {
     o["compensation"] = sensorsSettings[i].compensation;
     o["type"] = (uint8_t)sensorsSettings[i].type;
   }
+
+  JsonObject ct = doc.createNestedObject("compT");
+  ct["m"] = (int)config.compTemp.method;
+  ct["src"] = config.compTemp.source;
+  ct["addr"] = config.compTemp.address;
+
+  JsonObject ch = doc.createNestedObject("compH");
+  ch["m"] = (int)config.compHumi.method;
+  ch["src"] = config.compHumi.source;
+  ch["addr"] = config.compHumi.address;
 
   File f = LittleFS.open(CONFIG_FILE, "w");
   if (!f) {
