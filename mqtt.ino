@@ -20,12 +20,20 @@ WiFiClient wifiClient;
 unsigned long lastMqttReconnectAttempt = 0;
 bool haDiscoverySent = false;
 
+// Reconnect policy: when the broker is down we must not block loop() (web server,
+// OTA, sensors) for the whole TCP connect timeout, so: probe quickly, back off.
+const unsigned long MQTT_RETRY_MIN_MS = 5000;
+const unsigned long MQTT_RETRY_MAX_MS = 60000;
+const int32_t MQTT_PROBE_TIMEOUT_MS = 300;
+unsigned long mqttRetryIntervalMs = MQTT_RETRY_MIN_MS;
+
 void initMQTT() {
   mqttDeviceId = "kbsensors_" + String(ESP.getChipId(), HEX);
 
   mqttClient.setServer(mqtt.host.c_str(), mqtt.port);
   mqttClient.setCallback(mqttCallback);
   mqttClient.setBufferSize(1024);
+  mqttClient.setSocketTimeout(2); // seconds (PubSubClient default is 15 s)
 
   Serial.print(F("[MQTT] Device ID: "));
   Serial.println(mqttDeviceId);
@@ -36,11 +44,41 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   processMqttImport(topic, payload, length);
 }
 
+// Cheap TCP reachability check with a short timeout. PubSubClient::connect() blocks
+// for the full TCP timeout (seconds) when the broker is down, freezing everything.
+bool mqttBrokerReachable() {
+  IPAddress ip;
+  if (!ip.fromString(mqtt.host)) {
+    if (!WiFi.hostByName(mqtt.host.c_str(), ip, MQTT_PROBE_TIMEOUT_MS))
+      return false;
+  }
+  WiFiClient probe;
+  probe.setTimeout(MQTT_PROBE_TIMEOUT_MS); // also limits the TCP connect time
+  bool ok = probe.connect(ip, mqtt.port);
+  probe.stop();
+  return ok;
+}
+
+// Call after mqtt.* settings changed (web form, reset): PubSubClient keeps a raw
+// pointer to the host string, so setServer() must be repeated with the new value.
+void mqttApplyConfig() {
+  mqttClient.disconnect();
+  mqttClient.setServer(mqtt.host.c_str(), mqtt.port);
+  mqttRetryIntervalMs = MQTT_RETRY_MIN_MS;
+  lastMqttReconnectAttempt = 0;
+  haDiscoverySent = false;
+}
+
 bool mqttConnect() {
   if (!mqtt.enabled)
     return false;
   if (mqttClient.connected())
     return true;
+
+  if (!mqttBrokerReachable()) {
+    Serial.println(F("[MQTT] Broker unreachable, will retry later."));
+    return false;
+  }
 
   Serial.print(F("[MQTT] Connecting... "));
 
@@ -107,12 +145,16 @@ void mqttLoop() {
   if (!mqttClient.connected()) {
     haDiscoverySent = false; // Resetujemy flagę przy rozłączeniu
     unsigned long now = millis();
-    if (now - lastMqttReconnectAttempt > 5000) {
+    if (now - lastMqttReconnectAttempt > mqttRetryIntervalMs) {
       lastMqttReconnectAttempt = now;
       if (mqttConnect()) {
+        mqttRetryIntervalMs = MQTT_RETRY_MIN_MS;
         // Opcja A: wysyłamy od razu po udanym connect
         publishAllHADiscovery();
         haDiscoverySent = true;
+      } else if (mqttRetryIntervalMs < MQTT_RETRY_MAX_MS) {
+        // exponential backoff: 5 s, 10 s, 20 s, 40 s, 60 s, ...
+        mqttRetryIntervalMs = min(mqttRetryIntervalMs * 2, MQTT_RETRY_MAX_MS);
       }
     }
     return;

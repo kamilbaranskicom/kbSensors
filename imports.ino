@@ -121,6 +121,7 @@ void registerForceImportUpdate(int intervalSeconds) {
 float fetchHttpValue(String url, const char *sensorAddr) {
   WiFiClient client;
   HTTPClient http;
+  http.setTimeout(1500); // ms; default is 5 s and blocks loop() when the source is down
   float result = NAN;
 
   Serial.printf("[Import] Fetching %s looking for %s...\r\n", url.c_str(), sensorAddr);

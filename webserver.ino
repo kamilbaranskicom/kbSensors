@@ -488,11 +488,18 @@ void handleMQTTPage() {
       mqtt.pass = server.arg("pass");
     if (server.hasArg("baseTopic"))
       mqtt.baseTopic = server.arg("baseTopic");
-    if (server.hasArg("enabled"))
+    // Browsers do not send unchecked checkboxes at all, so for the HTML form
+    // (marked with mqttForm) a missing field means "off". Other clients
+    // (curl etc.) keep the old behaviour: only change what they send.
+    if (server.hasArg("mqttForm")) {
       mqtt.enabled = server.arg("enabled") == "on";
+      mqtt.retain = server.arg("retain") == "on";
+    } else if (server.hasArg("enabled")) {
+      mqtt.enabled = server.arg("enabled") == "on";
+    }
     if (server.hasArg("qos"))
       mqtt.qos = server.arg("qos").toInt();
-    if (server.hasArg("retain"))
+    if (!server.hasArg("mqttForm") && server.hasArg("retain"))
       mqtt.retain = server.arg("retain") == "on";
 
     if (server.hasArg("remTempMethod"))
@@ -520,6 +527,7 @@ void handleMQTTPage() {
 
     saveConfig();
     saveMQTTConfig();
+    mqttApplyConfig();
     server.send(200,
         "text/html",
         F("<html><head><meta http-equiv=\"refresh\" "
@@ -537,6 +545,7 @@ void handleMQTTPage() {
   html += "<h2>MQTT Configuration</h2>";
   html += message;
   html += "<form method='POST'>";
+  html += "<input type='hidden' name='mqttForm' value='1'>";
   html += "Host: <input name='host' value='" + mqtt.host + "'><br>";
   html += "Port: <input name='port' value='" + String(mqtt.port) + "'><br>";
   html += "User: <input name='user' value='" + mqtt.user + "'><br>";
