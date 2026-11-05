@@ -6,7 +6,7 @@ struct MQTTConfig {
   String host = "192.168.50.13";  // MQTT broker address
   uint16_t port = 1883;           // MQTT port
   String user = "kbSensors";      // username
-  String pass = "uEYxcbuPc6ufKL"; // password
+  String pass = ""; // password (no default: set it in /mqtt, stored in /mqtt.json)
   String baseTopic = "kbSensors"; // topic base
   bool enabled = true;            // enable/disable MQTT
   uint8_t qos = 0;                // QoS, default 0
