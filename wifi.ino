@@ -106,7 +106,7 @@ bool loadWiFiConfig() {
     return false;
   }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, f);
   f.close();
 
@@ -119,6 +119,7 @@ bool loadWiFiConfig() {
   wifiPassword = doc["wifipassword"] | "";
   webUser = doc["webuser"] | "admin";
   webPass = doc["webpass"] | "admin";
+  webOpenEdit = doc["openedit"] | false;
 
   Serial.printf("Loaded WiFi: %s", wifiSSID.c_str());
   Serial.println();
@@ -126,16 +127,23 @@ bool loadWiFiConfig() {
 }
 
 bool saveWiFiConfig() {
+  if (!LittleFS.begin()) {
+    Serial.println("Filesystem not mounted - cannot save wifi.json");
+    return false;
+  }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<512> doc;
   doc["ssid"] = wifiSSID;
   doc["wifipassword"] = wifiPassword;
   doc["webuser"] = webUser;
   doc["webpass"] = webPass;
+  doc["openedit"] = webOpenEdit;
 
   File f = LittleFS.open(WIFI_CONFIG_FILE, "w");
   if (!f) {
-    Serial.println("Failed to open wifi.json for writing");
+    FSInfo info;
+    LittleFS.info(info);
+    Serial.printf("Failed to open wifi.json for writing (filesystem: %u of %u bytes used)\r\n", (unsigned)info.usedBytes, (unsigned)info.totalBytes);
     return false;
   }
 

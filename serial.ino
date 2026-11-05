@@ -40,6 +40,7 @@ void handleSerial() {
       if (serialBufLen > 0)
         processSerialCommand(serialBuf);
       serialBufLen = 0; // reset bufora
+      memset(serialBuf, 0, sizeof(serialBuf)); // do not keep typed passwords in RAM
       Serial.println(); // nowa linia
       continue;
     }
@@ -47,7 +48,7 @@ void handleSerial() {
     // dodaj znak do bufora jeśli jest miejsce
     if (serialBufLen < SERIAL_BUF_SIZE - 1) {
       // do not echo the WiFi password while it is being typed
-      bool mask = serialBufLen >= 9 && strncmp(serialBuf, "wifipass ", 9) == 0;
+      bool mask = (serialBufLen >= 9 && strncmp(serialBuf, "wifipass ", 9) == 0) || (serialBufLen >= 8 && strncmp(serialBuf, "webpass ", 8) == 0);
       serialBuf[serialBufLen++] = c;
       Serial.print(mask ? '*' : c); // echo
     }
@@ -78,12 +79,12 @@ void processSerialCommand(const char *line) {
     registerForceImportUpdate(arg); // interval w sekundach
   } else if (strcmp(cmd, "s") == 0) {
     Serial.println(F("Sensors status:"));
-    for (int i = 0; i < MAX_SENSORS; i++) {
-      SensorConfig s = sensorsSettings[i];
+    for (int i = 0; i < sensorsCount; i++) {
+      const SensorConfig &s = sensorsSettings[i];
       if (!s.present) {
         continue;
       }
-      Serial.printf("%s [%s]: %.2f%s\r\n", s.address, s.name, s.lastValue, getSensorUnits(s));
+      Serial.printf("%s [%s]: %.2f%s\r\n", s.address, s.name, s.lastValue, getSensorUnits(s).c_str());
     }
   } else if (strcmp(cmd, "mpd") == 0) {
     publishAllHADiscovery();
@@ -94,8 +95,8 @@ void processSerialCommand(const char *line) {
     Serial.println(mqttClient.connected() ? "YES" : "NO");
   } else if (strcmp(cmd, "e") == 0) {
     Serial.println(F("Enviromental data:"));
-    Serial.printf("Temperature: %.2fC (upd: %d)\r\n", globalEnv.temperature, globalEnv.lastTempUpdate);
-    Serial.printf("Humidity: %.2f%% (upd: %d)\r\n", globalEnv.humidity, globalEnv.lastHumiUpdate);
+    Serial.printf("Temperature: %.2fC (upd: %lu)\r\n", globalEnv.temperature, globalEnv.lastTempUpdate);
+    Serial.printf("Humidity: %.2f%% (upd: %lu)\r\n", globalEnv.humidity, globalEnv.lastHumiUpdate);
   } else if (strcmp(cmd, "ip") == 0) {
     showWiFiStatus();
   } else if (strcmp(cmd, "ssid") == 0) {
@@ -122,6 +123,20 @@ void processSerialCommand(const char *line) {
       saveWiFiConfig();
       Serial.println(F("WiFi password saved. Connect with 'wifi'."));
     }
+  } else if (strcmp(cmd, "webpass") == 0) {
+    if (*rest == 0) {
+      Serial.println(F("Usage: webpass <password>  (6-63 characters, not 'admin')"));
+    } else if (strlen(rest) < 6 || strlen(rest) > 63 || strcmp(rest, "admin") == 0) {
+      Serial.println(F("Password must have 6-63 characters and differ from the default."));
+    } else {
+      webPass = rest;
+      saveWiFiConfig();
+      Serial.println(F("WWW password saved."));
+    }
+  } else if (strcmp(cmd, "reboot") == 0) {
+    Serial.println(F("Restarting..."));
+    delay(100);
+    ESP.restart();
   } else if (strcmp(cmd, "wifi") == 0) {
     Serial.println(F("Reconnecting WiFi with saved settings (up to 15 s)..."));
     reconnectWiFi();
@@ -138,6 +153,8 @@ void processSerialCommand(const char *line) {
     Serial.println(F("  ssid [name] - show / set (and save) the WiFi SSID"));
     Serial.println(F("  wifipass <password> - set (and save) the WiFi password; '-' = open network"));
     Serial.println(F("  wifi - reconnect using the saved SSID and password"));
+    Serial.println(F("  webpass <password> - set (and save) the WWW password"));
+    Serial.println(F("  reboot - restart the device"));
     Serial.println(F("  help - show this help message"));
   } else {
     Serial.printf("Unknown command: %s\r\n", line);

@@ -11,6 +11,10 @@ function init() {
   });
 }
 
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function editSensor(tr) {
   // close if opened
   closeEditTr();
@@ -25,8 +29,8 @@ function editSensor(tr) {
   compensation = td2.title;
   temperature = td2.innerText;
 
-  td1.innerHTML = 'name: <input name="friendlyName" type="text" value="' + friendlyName + '" />';
-  td2.innerHTML = 'compensation: <input name="compensation" type="number" size=6 value="' + compensation + '" step="0.01" /><input type="submit" value="OK!" /><input type="button" id="cancel" value="Cancel" />';
+  td1.innerHTML = 'name: <input name="friendlyName" type="text" value="' + escapeHtml(friendlyName) + '" />';
+  td2.innerHTML = 'compensation: <input name="compensation" type="number" size=6 value="' + escapeHtml(compensation) + '" step="0.01" /><input type="submit" value="OK!" /><input type="button" id="cancel" value="Cancel" />';
 
   document.querySelector("#cancel").addEventListener("click", () => {
     closeEditTr();
@@ -47,9 +51,9 @@ function closeEditTr() {
     td2 = openEditTr.querySelector("td:nth-child(2)");
 
     // td1.address hasn't changed
-    td1.innerHTML = friendlyName;
+    td1.textContent = friendlyName;
     td2.title = compensation;
-    td2.innerHTML = temperature;
+    td2.textContent = temperature;
 
     openEditTr = false;
   }
@@ -62,7 +66,7 @@ function sendNewSensorData() {
   // maybe too restrictive
   friendlyName = friendlyName.replace(/[&\/\\#,+()$~%.'":*?<>{}]/g, "_");
 
-  const url = "/edit?address=" + address + "&friendlyName=" + friendlyName + "&compensation=" + compensation;
+  const url = "/edit?address=" + encodeURIComponent(address) + "&friendlyName=" + encodeURIComponent(friendlyName) + "&compensation=" + encodeURIComponent(compensation);
 
   fetch(url)
     .then((response) => response.text())
@@ -94,15 +98,18 @@ function validateWebPasswordForm() {
 const gear = document.getElementById("settingsIcon");
 const menu = document.getElementById("settingsMenu");
 
-gear.addEventListener("click", (e) => {
-  e.stopPropagation(); // nie zamyka menu przy kliknięciu w ikonę
-  menu.classList.toggle("show");
-});
+// the settings pages (/wifi, /mqtt) have no gear icon
+if (gear && menu) {
+  gear.addEventListener("click", (e) => {
+    e.stopPropagation(); // nie zamyka menu przy kliknięciu w ikonę
+    menu.classList.toggle("show");
+  });
 
-// ukrycie menu po kliknięciu poza nim
-document.addEventListener("click", () => {
-  menu.classList.remove("show");
-});
+  // ukrycie menu po kliknięciu poza nim
+  document.addEventListener("click", () => {
+    menu.classList.remove("show");
+  });
+}
 
 function toggleRemoteInputs() {
   const check = (prefix) => {
@@ -128,4 +135,8 @@ function toggleRemoteInputs() {
   };
   check("remTemp");
   check("remHumi");
+}
+
+if (document.getElementById("remTempMethod")) {
+  toggleRemoteInputs();
 }

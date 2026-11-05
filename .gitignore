@@ -3,3 +3,4 @@ data/config.json
 data/wifi.json
 .DS_Store
 config*.json
+secrets.h

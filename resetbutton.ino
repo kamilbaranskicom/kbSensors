@@ -6,21 +6,30 @@
 
 unsigned long pressStart = 0;
 bool resetPressed = false;
+unsigned long lastButtonCheck = 0;
+unsigned long lastHoldReport = 0;
 
 void initResetButton() {
   pinMode(RESET_PIN, INPUT_PULLUP);  // assuming button shorts to GND
 }
 
 void checkResetButton() {
+  unsigned long now = millis();
+  if (now - lastButtonCheck < 50) // debounce without blocking loop() (web server, OTA...)
+    return;
+  lastButtonCheck = now;
+
   int state = digitalRead(RESET_PIN);
 
   if (state == LOW && !resetPressed) { // button pressed
-    pressStart = millis();
+    pressStart = now;
+    lastHoldReport = now;
     resetPressed = true;
   }
 
   if (state == HIGH && resetPressed) { // button released
-    unsigned long duration = millis() - pressStart;
+    unsigned long duration = now - pressStart;
+    resetPressed = false;
     Serial.print("\rButton released after ");
     Serial.print(duration / 1000.0, 2);
     Serial.println(" s        ");
@@ -35,20 +44,17 @@ void checkResetButton() {
     } else if (duration >= AP_THRESHOLD) {
       Serial.println("AP mode triggered!");
       startAPMode();
-      initWebserver(); // switch to captive-portal routes
+      initWebserver(); // switch to the captive-portal routes
     }
-
-    resetPressed = false;
+    return;
   }
 
-  if (resetPressed) {
-    unsigned long duration = millis() - pressStart;
+  if (resetPressed && now - lastHoldReport >= 500) {
+    lastHoldReport = now;
     Serial.print("\rHolding button: ");
-    Serial.print(duration / 1000.0, 2);
+    Serial.print((now - pressStart) / 1000.0, 1);
     Serial.print(" s   ");
   }
-
-  delay(50); // lekki debounce
 }
 
 void fullFactoryReset() {
@@ -57,8 +63,8 @@ void fullFactoryReset() {
   // usuwamy wszystkie pliki konfiguracyjne
   if (LittleFS.exists("/wifi.json")) LittleFS.remove("/wifi.json");
   if (LittleFS.exists("/config.json")) LittleFS.remove("/config.json");
+  if (LittleFS.exists("/mqtt.json")) LittleFS.remove("/mqtt.json");
   
   Serial.println("All config files removed. Restarting...");
   ESP.restart();
 }
-

@@ -1,4 +1,9 @@
 void initOTA() {
+#ifndef OTA_PASSWORD
+  // No password = no OTA: anyone on the network could otherwise flash the device.
+  Serial.println(F("OTA disabled: define OTA_PASSWORD in secrets.h (see secrets.h.example)."));
+  return;
+#else
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
 
@@ -6,8 +11,8 @@ void initOTA() {
   // let's do it consistent with the netbios name
   ArduinoOTA.setHostname(NETBIOSNAME);
 
-  // No authentication by default
-  // ArduinoOTA.setPassword((const char *)"123");
+  // The password comes from secrets.h (not committed to git).
+  ArduinoOTA.setPassword(OTA_PASSWORD);
 
   ArduinoOTA.onStart([]() {
     Serial.println("OTA start");
@@ -33,4 +38,6 @@ void initOTA() {
       Serial.println("End Failed");
   });
   ArduinoOTA.begin();
+  otaStarted = true;
+#endif
 }

@@ -19,6 +19,8 @@ WiFiClient wifiClient;
 
 unsigned long lastMqttReconnectAttempt = 0;
 bool haDiscoverySent = false;
+unsigned long lastMqttStatusPublish = 0;
+const unsigned long MQTT_STATUS_INTERVAL_MS = 300000; // refresh uptime/heap/ip every 5 min
 
 // Reconnect policy: when the broker is down we must not block loop() (web server,
 // OTA, sensors) for the whole TCP connect timeout, so: probe quickly, back off.
@@ -29,6 +31,8 @@ unsigned long mqttRetryIntervalMs = MQTT_RETRY_MIN_MS;
 
 void initMQTT() {
   mqttDeviceId = "kbsensors_" + String(ESP.getChipId(), HEX);
+
+  loadMQTTConfig(); // was never called: saved MQTT settings were lost on every reboot
 
   mqttClient.setServer(mqtt.host.c_str(), mqtt.port);
   mqttClient.setCallback(mqttCallback);
@@ -99,13 +103,13 @@ bool mqttConnect() {
     mqttPublishStatus("online");
     // publishAllHADiscovery(); // nie, bo za pierwszym razem jeszcze nie ma wszystkiego.
     // SUBSKRYPCJE DLA IMPORTU DANYCH
-    if (config.compTemp.method == IMPORT_MQTT_JSON && sizeof(config.compTemp.source) > 0) {
+    if (config.compTemp.method == IMPORT_MQTT_JSON && config.compTemp.source.length() > 0) {
       mqttClient.subscribe(config.compTemp.source.c_str());
-      Serial.printf("[MQTT] Subscribed to CompTemp: %s\n", config.compTemp.source);
+      Serial.printf("[MQTT] Subscribed to CompTemp: %s\r\n", config.compTemp.source.c_str());
     }
-    if (config.compHumi.method == IMPORT_MQTT_JSON && sizeof(config.compHumi.source) > 0) {
+    if (config.compHumi.method == IMPORT_MQTT_JSON && config.compHumi.source.length() > 0) {
       mqttClient.subscribe(config.compHumi.source.c_str());
-      Serial.printf("[MQTT] Subscribed to CompHumi: %s\n", config.compHumi.source);
+      Serial.printf("[MQTT] Subscribed to CompHumi: %s\r\n", config.compHumi.source.c_str());
     }
 
   } else {
@@ -120,8 +124,7 @@ void mqttPublishStatus(const char *state) {
   if (!mqtt.enabled || !mqttClient.connected())
     return;
 
-  char topic[64];
-  snprintf(topic, sizeof(topic), "%s/%s/status", mqtt.baseTopic.c_str(), mqttDeviceId.c_str());
+  String topic = mqtt.baseTopic + "/" + mqttDeviceId + "/status";
 
   StaticJsonDocument<384> doc;
 
@@ -135,7 +138,8 @@ void mqttPublishStatus(const char *state) {
   size_t n = serializeJson(doc, buffer);
 
   // 4. Wysyłka
-  mqttClient.publish(topic, (const uint8_t *)buffer, n, mqtt.retain);
+  mqttClient.publish(topic.c_str(), (const uint8_t *)buffer, n, mqtt.retain);
+  lastMqttStatusPublish = millis();
 }
 
 void mqttLoop() {
@@ -152,6 +156,7 @@ void mqttLoop() {
         // Opcja A: wysyłamy od razu po udanym connect
         publishAllHADiscovery();
         haDiscoverySent = true;
+        mqttPublishChangedSensors(true); // current values right after (re)connecting
       } else if (mqttRetryIntervalMs < MQTT_RETRY_MAX_MS) {
         // exponential backoff: 5 s, 10 s, 20 s, 40 s, 60 s, ...
         mqttRetryIntervalMs = min(mqttRetryIntervalMs * 2, MQTT_RETRY_MAX_MS);
@@ -164,6 +169,11 @@ void mqttLoop() {
   if (!haDiscoverySent) {
     publishAllHADiscovery();
     haDiscoverySent = true;
+    mqttPublishChangedSensors(true);
+  }
+
+  if (millis() - lastMqttStatusPublish >= MQTT_STATUS_INTERVAL_MS) {
+    mqttPublishStatus("online");
   }
 
   mqttClient.loop();
@@ -194,7 +204,7 @@ bool loadMQTTConfig() {
     return false;
   }
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) {
@@ -210,6 +220,8 @@ bool loadMQTTConfig() {
   mqtt.enabled = doc["enabled"] | mqtt.enabled;
   mqtt.qos = doc["qos"] | mqtt.qos;
   mqtt.retain = doc["retain"] | mqtt.retain;
+  if (mqtt.qos > 1)
+    mqtt.qos = 1; // PubSubClient supports QoS 0 and 1
 
   Serial.printf("MQTT config loaded: %s:%d (%s)", mqtt.host.c_str(), mqtt.port, mqttDeviceId.c_str());
   Serial.println();
@@ -223,7 +235,7 @@ bool saveMQTTConfig() {
     return false;
   }
 
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   doc["host"] = mqtt.host;
   doc["port"] = mqtt.port;
   doc["user"] = mqtt.user;
@@ -245,7 +257,7 @@ bool saveMQTTConfig() {
 }
 
 void mqttPublishChangedSensors(bool forceAll) {
-  for (int i = 0; i < MAX_SENSORS; i++) {
+  for (int i = 0; i < sensorsCount; i++) {
     SensorConfig &s = sensorsSettings[i];
 
     if (!s.present)
@@ -334,7 +346,7 @@ void mqttPublishHADiscovery(const SensorConfig &s) {
 }
 
 void publishAllHADiscovery() {
-  for (int i = 0; i < MAX_SENSORS; i++) {
+  for (int i = 0; i < sensorsCount; i++) {
     if (sensorsSettings[i].present) {
       mqttPublishHADiscovery(sensorsSettings[i]);
     }

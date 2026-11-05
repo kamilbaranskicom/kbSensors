@@ -2,7 +2,7 @@
 const char programName[] = "kbSensors station.";
 const char deviceName[] = "kbSensors";
 
-const char programVersion[] = "0.20260210_k06";
+const char programVersion[] = "0.20261105_k07";
 
 const char programManual[] = "// tiny monitor station for one DHT11 and many DS18B20 sensors\r\n"
                              "// outputs data at http://kbsensors/ , http://kbsensors/xml , "
@@ -24,11 +24,18 @@ const char programManual[] = "// tiny monitor station for one DHT11 and many DS1
 // comment the following line to disable OTA updates
 #define OTA_ENABLED
 
+// Secrets (OTA password...) live in secrets.h, which is NOT committed (see .gitignore).
+// Copy secrets.h.example to secrets.h and edit it.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
 /*
    updates over the air
 */
 #ifdef OTA_ENABLED
 #include <ArduinoOTA.h>
+bool otaStarted = false; // set by initOTA() (only when OTA_PASSWORD is defined)
 #endif
 
 /*
@@ -48,6 +55,7 @@ String wifiSSID = "";
 String wifiPassword = "";
 String webUser = "admin";
 String webPass = "admin";
+bool webOpenEdit = false; // true = /edit, /reboot and /rescan work without the password
 
 /******************************************************************************
  *                                                                            *
@@ -73,6 +81,10 @@ void setup() {
   initLED();
   initMQTT();
   initSSDP();
+
+  if (webPass == "admin") {
+    Serial.println(F("WARNING: the default WWW password is in use. Set one with: webpass <password>"));
+  }
 }
 
 void loop() {
@@ -84,7 +96,8 @@ void loop() {
   handleSensors();
 
 #ifdef OTA_ENABLED
-  ArduinoOTA.handle();
+  if (otaStarted)
+    ArduinoOTA.handle();
 #endif
 
   mqttLoop();

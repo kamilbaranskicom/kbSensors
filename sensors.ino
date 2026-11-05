@@ -7,7 +7,7 @@ const unsigned long FLOOD_GUARD_MS = 1000; // 1 second
 bool sensorAdded;
 
 void initSensors() {
-  bool sensorAdded = false;
+  sensorAdded = false;
 
   ds18b20_init();
   dht11_init();
@@ -28,14 +28,16 @@ void scanSensors() {
     sensorsSettings[i].present = false;
   }
 
-  bool sensorAdded = false;
+  // Global flag, set by submitSensorReading() when a new sensor shows up. (It used to be
+  // shadowed by a local variable here, so new sensors were never saved nor announced.)
+  sensorAdded = false;
 
-  // Wykorzystujemy bitowy OR (|), aby każda funkcja się wykonała
   ds18b20_update();
   dht11_update();
   ccs811_update();
 
   if (sensorAdded) { // new sensor
+    sensorAdded = false;
     saveConfig();
     publishAllHADiscovery();
   }

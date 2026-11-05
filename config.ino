@@ -22,7 +22,7 @@ bool loadConfig() {
   if (!f)
     return false;
 
-  DynamicJsonDocument doc(8192);
+  DynamicJsonDocument doc(f.size() * 2 + 1024); // grows with the number of sensors
   auto err = deserializeJson(doc, f);
   f.close();
 
@@ -68,12 +68,10 @@ bool loadConfig() {
 }
 
 bool saveConfig() {
-  if (sensorsCount == 0) {
-    Serial.println("No sensors to save.");
-    return false;
-  }
-
-  DynamicJsonDocument doc(8192);
+  // Saved even with no sensors: the compensation settings live in this file too.
+  // Sensors that are just not connected right now stay in sensorsSettings[] (only
+  // their "present" flag is false), so they are kept.
+  DynamicJsonDocument doc(1024 + sensorsCount * 192);
 
   JsonObject root = doc.to<JsonObject>();
   root["version"] = programVersion;
