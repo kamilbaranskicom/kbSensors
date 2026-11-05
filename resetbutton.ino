@@ -35,6 +35,7 @@ void checkResetButton() {
     } else if (duration >= AP_THRESHOLD) {
       Serial.println("AP mode triggered!");
       startAPMode();
+      initWebserver(); // switch to captive-portal routes
     }
 
     resetPressed = false;

@@ -85,6 +85,7 @@ void reconnectWiFi() {
   WiFi.disconnect();
   if (!startSTAMode())
     startAPMode();
+  initWebserver(); // routes differ between AP and STA mode
   showWiFiStatus();
 }
 
