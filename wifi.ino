@@ -57,6 +57,37 @@ bool startSTAMode() {
 
 void initNetbiosName() { NBNS.begin(NETBIOSNAME); }
 
+// Prints the current WiFi mode, SSID and IP (serial command "ip").
+void showWiFiStatus() {
+  WiFiMode_t mode = WiFi.getMode();
+  if (mode & WIFI_STA) {
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println(F("WiFi: connected (station)"));
+      Serial.printf("SSID: %s\r\n", WiFi.SSID().c_str());
+      Serial.printf("IP: %s\r\n", WiFi.localIP().toString().c_str());
+      Serial.printf("RSSI: %d dBm\r\n", WiFi.RSSI());
+    } else {
+      Serial.println(F("WiFi: station mode, NOT connected"));
+      Serial.printf("Configured SSID: %s\r\n", wifiSSID.length() ? wifiSSID.c_str() : "(none)");
+    }
+  }
+  if (mode & WIFI_AP) {
+    Serial.println(F("WiFi: access point (setup mode)"));
+    Serial.printf("SSID: %s\r\n", WiFi.softAPSSID().c_str());
+    Serial.printf("IP: %s\r\n", WiFi.softAPIP().toString().c_str());
+    Serial.printf("Configured SSID: %s\r\n", wifiSSID.length() ? wifiSSID.c_str() : "(none)");
+  }
+  Serial.printf("MAC: %s\r\n", WiFi.macAddress().c_str());
+}
+
+// Reconnects using the saved credentials (serial command "wifi"). Blocks up to ~15 s.
+void reconnectWiFi() {
+  WiFi.disconnect();
+  if (!startSTAMode())
+    startAPMode();
+  showWiFiStatus();
+}
+
 bool loadWiFiConfig() {
   if (!LittleFS.begin()) {
     Serial.println("FS init failed");
